@@ -1,17 +1,53 @@
 {
-  "name": "unipay-sdk",
-  "module": "index.ts",
-  "type": "module",
-  "scripts": {
-    "test": "vitest"
+  "name": "@fiandev/unipay-sdk",
+  "version": "1.0.0",
+  "description": "Universal payment gateway make it easy to integrate payment gateways into your Node.js application.",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
   },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm run build:esm && npm run build:cjs && npm run build:types",
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "build:types": "tsc -p tsconfig.types.json",
+    "test": "vitest",
+    "test:ci": "vitest run",
+    "prepublishOnly": "npm run build",
+    "release": "npm version patch && npm publish"
+  },
+  "keywords": [
+    "payment",
+    "gateway",
+    "midtrans",
+    "doku",
+    "sdk",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fiandev/unipay-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fiandev/unipay-sdk/issues"
+  },
+  "homepage": "https://github.com/fiandev/unipay-sdk#readme",
   "devDependencies": {
     "@types/bun": "latest",
     "@types/dotenv": "^8.2.3",
-    "vitest": "^4.0.6"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "vitest": "^4.0.6",
+    "typescript": "^5.0.0"
   },
   "dependencies": {
     "@types/midtrans-client": "^1.4.0",

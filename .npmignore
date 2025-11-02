@@ -1,0 +1,46 @@
+# Source files
+src/
+lib/
+providers/
+types/
+tests/
+*.ts
+!*.d.ts
+
+# Development files
+.github/
+.vscode/
+.idea/
+*.log
+.env*
+
+# Build and dependency files
+node_modules/
+coverage/
+*.lcov
+*.tsbuildinfo
+
+# Documentation
+README.md
+CHANGELOG.md
+
+# Config files
+tsconfig*.json
+vitest.config.ts
+bun.lock
+package-lock.json
+yarn.lock
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI tools
+.opencode
+.gemini
