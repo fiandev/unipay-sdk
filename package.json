@@ -23,7 +23,11 @@
     "test": "vitest",
     "test:ci": "vitest run",
     "prepublishOnly": "npm run build",
-    "release": "npm version patch && npm publish"
+    "release": "npm version patch && npm publish",
+    "docs:dev": "cd docs && npm run dev",
+    "docs:build": "cd docs && npm run build",
+    "docs:preview": "cd docs && npm run preview",
+    "docs:install": "cd docs && npm install"
   },
   "keywords": [
     "payment",

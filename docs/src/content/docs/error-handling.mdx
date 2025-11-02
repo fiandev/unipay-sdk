@@ -1,0 +1,792 @@
+---
+title: Error Handling
+description: Comprehensive guide to handling errors and exceptions in UniPay SDK.
+---
+
+# Error Handling
+
+This guide covers error handling strategies, common error scenarios, and best practices for building robust payment integrations with UniPay SDK.
+
+## Error Types
+
+### 1. Configuration Errors
+
+These errors occur when the SDK is improperly configured.
+
+```javascript
+// Missing required configuration
+try {
+  const unipay = new Unipay({
+    provider: 'midtrans',
+    config: {
+      // Missing client_id and secret_key
+      is_production: false
+    }
+  });
+} catch (error) {
+  console.error('Configuration error:', error.message);
+  // Output: "Missing required config fields: client_id, secret_key"
+}
+```
+
+**Common Configuration Errors:**
+- Missing required fields (`client_id`, `secret_key`)
+- Invalid environment settings
+- Incorrect data types
+
+### 2. Validation Errors
+
+These errors occur when input data is invalid.
+
+```javascript
+try {
+  const payment = await unipay.createPayment({
+    // Missing required orderId
+    amount: 10000,
+    customerEmail: 'test@example.com'
+  });
+} catch (error) {
+  console.error('Validation error:', error.message);
+}
+```
+
+### 3. Provider Errors
+
+These errors come from the payment provider's API.
+
+```javascript
+try {
+  const payment = await unipay.createPayment({
+    orderId: 'ORDER-123',
+    amount: 10000,
+    customerEmail: 'invalid-email'
+  });
+} catch (error) {
+  if (error.message.includes('MidtransError')) {
+    console.error('Provider API error:', error.message);
+    // Handle provider-specific errors
+  }
+}
+```
+
+### 4. Network Errors
+
+These errors occur due to connectivity issues.
+
+```javascript
+try {
+  const payment = await unipay.createPayment(paymentData);
+} catch (error) {
+  if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+    console.error('Network error:', error.message);
+    // Implement retry logic
+  }
+}
+```
+
+## Error Handling Patterns
+
+### 1. Try-Catch Wrapper
+
+```javascript
+class PaymentService {
+  constructor(unipay) {
+    this.unipay = unipay;
+  }
+
+  async createPaymentSafely(paymentData) {
+    try {
+      const payment = await this.unipay.createPayment(paymentData);
+      return {
+        success: true,
+        data: payment
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: this.handleError(error)
+      };
+    }
+  }
+
+  handleError(error) {
+    // Categorize and format errors
+    if (error.message.includes('Missing required config')) {
+      return {
+        type: 'CONFIGURATION_ERROR',
+        message: 'Payment provider is not properly configured',
+        details: error.message
+      };
+    }
+
+    if (error.message.includes('MidtransError')) {
+      return {
+        type: 'PROVIDER_ERROR',
+        message: 'Payment provider returned an error',
+        details: error.message
+      };
+    }
+
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+      return {
+        type: 'NETWORK_ERROR',
+        message: 'Network connection failed',
+        details: error.message
+      };
+    }
+
+    return {
+      type: 'UNKNOWN_ERROR',
+      message: 'An unexpected error occurred',
+      details: error.message
+    };
+  }
+}
+```
+
+### 2. Result Pattern
+
+```javascript
+class Result {
+  constructor(success, data = null, error = null) {
+    this.success = success;
+    this.data = data;
+    this.error = error;
+  }
+
+  static success(data) {
+    return new Result(true, data);
+  }
+
+  static failure(error) {
+    return new Result(false, null, error);
+  }
+
+  isFailure() {
+    return !this.success;
+  }
+
+  isSuccess() {
+    return this.success;
+  }
+}
+
+class PaymentService {
+  async createPayment(paymentData) {
+    try {
+      this.validatePaymentData(paymentData);
+      const payment = await this.unipay.createPayment(paymentData);
+      return Result.success(payment);
+    } catch (error) {
+      return Result.failure(this.formatError(error));
+    }
+  }
+
+  validatePaymentData(data) {
+    if (!data.orderId) {
+      throw new Error('Order ID is required');
+    }
+    if (!data.amount || data.amount <= 0) {
+      throw new Error('Valid amount is required');
+    }
+    if (!data.customerEmail) {
+      throw new Error('Customer email is required');
+    }
+  }
+
+  formatError(error) {
+    return {
+      type: this.getErrorType(error),
+      message: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  getErrorType(error) {
+    if (error.message.includes('config')) return 'CONFIGURATION';
+    if (error.message.includes('Midtrans')) return 'PROVIDER';
+    if (error.code && error.code.startsWith('E')) return 'NETWORK';
+    return 'VALIDATION';
+  }
+}
+
+// Usage
+const result = await paymentService.createPayment(paymentData);
+
+if (result.isFailure()) {
+  console.error('Payment failed:', result.error);
+  // Handle error based on type
+  switch (result.error.type) {
+    case 'CONFIGURATION':
+      // Show configuration error to admin
+      break;
+    case 'PROVIDER':
+      // Show user-friendly error
+      break;
+    case 'NETWORK':
+      // Retry the payment
+      break;
+  }
+} else {
+  console.log('Payment created:', result.data);
+}
+```
+
+### 3. Async/Await with Error Boundaries
+
+```javascript
+class PaymentErrorBoundary {
+  constructor(maxRetries = 3, retryDelay = 1000) {
+    this.maxRetries = maxRetries;
+    this.retryDelay = retryDelay;
+  }
+
+  async execute(operation, ...args) {
+    let lastError;
+
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        const result = await operation(...args);
+        
+        if (attempt > 1) {
+          console.log(`Operation succeeded on attempt ${attempt}`);
+        }
+        
+        return result;
+      } catch (error) {
+        lastError = error;
+        
+        if (!this.shouldRetry(error) || attempt === this.maxRetries) {
+          break;
+        }
+
+        const delay = this.retryDelay * Math.pow(2, attempt - 1);
+        console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
+        await this.sleep(delay);
+      }
+    }
+
+    throw lastError;
+  }
+
+  shouldRetry(error) {
+    const retryableErrors = [
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      'rate limit',
+      'timeout',
+      '502',
+      '503',
+      '504'
+    ];
+
+    return retryableErrors.some(retryableError => 
+      error.message.toLowerCase().includes(retryableError.toLowerCase())
+    );
+  }
+
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+// Usage
+const errorBoundary = new PaymentErrorBoundary(3, 1000);
+
+try {
+  const payment = await errorBoundary.execute(
+    unipay.createPayment,
+    paymentData
+  );
+  console.log('Payment successful:', payment);
+} catch (error) {
+  console.error('All retry attempts failed:', error);
+  // Handle final error
+}
+```
+
+## Provider-Specific Error Handling
+
+### Midtrans Error Codes
+
+```javascript
+class MidtransErrorHandler {
+  static handleMidtransError(error) {
+    const errorMap = {
+      '400': 'Bad Request - Invalid parameters',
+      '401': 'Unauthorized - Invalid API keys',
+      '403': 'Forbidden - Insufficient permissions',
+      '404': 'Not Found - Resource not found',
+      '406': 'Not Acceptable - Invalid format',
+      '410': 'Gone - Transaction expired',
+      '411': 'Length Required - Missing content length',
+      '422': 'Unprocessable Entity - Validation failed',
+      '500': 'Internal Server Error - Provider error',
+      '502': 'Bad Gateway - Provider temporarily unavailable',
+      '503': 'Service Unavailable - Provider maintenance',
+      '504': 'Gateway Timeout - Request timeout'
+    };
+
+    const statusCode = error.statusCode || error.httpStatusCode;
+    const errorMessage = errorMap[statusCode] || 'Unknown error';
+
+    return {
+      statusCode,
+      message: errorMessage,
+      originalError: error.message,
+      isRetryable: this.isRetryableError(statusCode)
+    };
+  }
+
+  static isRetryableError(statusCode) {
+    const retryableCodes = ['500', '502', '503', '504', '429'];
+    return retryableCodes.includes(statusCode.toString());
+  }
+
+  static getErrorMessage(error) {
+    // Extract meaningful error message from Midtrans response
+    if (error.response && error.response.data) {
+      const data = error.response.data;
+      
+      if (data.error_messages && Array.isArray(data.error_messages)) {
+        return data.error_messages.join(', ');
+      }
+      
+      if (data.status_message) {
+        return data.status_message;
+      }
+    }
+
+    return error.message || 'Unknown error occurred';
+  }
+}
+```
+
+### Comprehensive Error Handler
+
+```javascript
+class ErrorHandler {
+  static handle(error, context = {}) {
+    const errorInfo = {
+      timestamp: new Date().toISOString(),
+      context,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        statusCode: error.statusCode || error.httpStatusCode
+      }
+    };
+
+    // Log error for debugging
+    this.logError(errorInfo);
+
+    // Categorize error
+    const category = this.categorizeError(error);
+    
+    // Return user-friendly response
+    return this.formatErrorResponse(error, category);
+  }
+
+  static categorizeError(error) {
+    if (error.message.includes('Missing required config')) {
+      return 'CONFIGURATION_ERROR';
+    }
+
+    if (error.message.includes('MidtransError') || error.statusCode) {
+      return 'PROVIDER_ERROR';
+    }
+
+    if (error.code && ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND'].includes(error.code)) {
+      return 'NETWORK_ERROR';
+    }
+
+    if (error.message.includes('validation') || error.message.includes('required')) {
+      return 'VALIDATION_ERROR';
+    }
+
+    return 'UNKNOWN_ERROR';
+  }
+
+  static formatErrorResponse(error, category) {
+    const responses = {
+      CONFIGURATION_ERROR: {
+        userMessage: 'Payment service is temporarily unavailable. Please try again later.',
+        technicalMessage: error.message,
+        shouldRetry: false,
+        escalateToAdmin: true
+      },
+      
+      PROVIDER_ERROR: {
+        userMessage: this.getProviderUserMessage(error),
+        technicalMessage: error.message,
+        shouldRetry: this.shouldRetryProviderError(error),
+        escalateToAdmin: error.statusCode >= 500
+      },
+      
+      NETWORK_ERROR: {
+        userMessage: 'Network connection failed. Please check your internet connection and try again.',
+        technicalMessage: error.message,
+        shouldRetry: true,
+        escalateToAdmin: false
+      },
+      
+      VALIDATION_ERROR: {
+        userMessage: 'Invalid payment information provided. Please check your details and try again.',
+        technicalMessage: error.message,
+        shouldRetry: false,
+        escalateToAdmin: false
+      },
+      
+      UNKNOWN_ERROR: {
+        userMessage: 'An unexpected error occurred. Please try again or contact support.',
+        technicalMessage: error.message,
+        shouldRetry: true,
+        escalateToAdmin: true
+      }
+    };
+
+    return {
+      category,
+      ...responses[category],
+      originalError: error
+    };
+  }
+
+  static getProviderUserMessage(error) {
+    const statusCode = error.statusCode || error.httpStatusCode;
+    
+    const messages = {
+      400: 'Invalid payment information. Please check your details.',
+      401: 'Payment service authentication failed.',
+      403: 'Payment operation not permitted.',
+      404: 'Payment not found.',
+      410: 'Payment has expired.',
+      422: 'Invalid payment details provided.',
+      429: 'Too many payment attempts. Please wait and try again.',
+      500: 'Payment service temporarily unavailable.',
+      502: 'Payment service temporarily unavailable.',
+      503: 'Payment service under maintenance.',
+      504: 'Payment request timed out.'
+    };
+
+    return messages[statusCode] || 'Payment processing failed.';
+  }
+
+  static shouldRetryProviderError(error) {
+    const retryableStatusCodes = [429, 500, 502, 503, 504];
+    return retryableStatusCodes.includes(error.statusCode || error.httpStatusCode);
+  }
+
+  static logError(errorInfo) {
+    if (process.env.NODE_ENV === 'production') {
+      // Send to logging service (Sentry, LogRocket, etc.)
+      console.error('Payment Error:', JSON.stringify(errorInfo, null, 2));
+    } else {
+      console.error('Payment Error:', errorInfo);
+    }
+  }
+}
+```
+
+## Error Recovery Strategies
+
+### 1. Automatic Retry with Exponential Backoff
+
+```javascript
+class RetryablePaymentService {
+  constructor(unipay) {
+    this.unipay = unipay;
+    this.maxRetries = 3;
+    this.baseDelay = 1000;
+  }
+
+  async createPaymentWithRetry(paymentData) {
+    let lastError;
+
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        return await this.unipay.createPayment(paymentData);
+      } catch (error) {
+        lastError = error;
+
+        if (!this.shouldRetry(error) || attempt === this.maxRetries) {
+          break;
+        }
+
+        const delay = this.calculateDelay(attempt);
+        console.log(`Payment attempt ${attempt} failed, retrying in ${delay}ms...`);
+        await this.sleep(delay);
+      }
+    }
+
+    throw lastError;
+  }
+
+  shouldRetry(error) {
+    // Don't retry validation or configuration errors
+    if (error.message.includes('Missing required config') ||
+        error.message.includes('validation') ||
+        error.statusCode === 400 ||
+        error.statusCode === 401 ||
+        error.statusCode === 403 ||
+        error.statusCode === 422) {
+      return false;
+    }
+
+    // Retry network errors and server errors
+    return true;
+  }
+
+  calculateDelay(attempt) {
+    // Exponential backoff with jitter
+    const exponentialDelay = this.baseDelay * Math.pow(2, attempt - 1);
+    const jitter = Math.random() * 0.1 * exponentialDelay;
+    return exponentialDelay + jitter;
+  }
+
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+```
+
+### 2. Circuit Breaker Pattern
+
+```javascript
+class CircuitBreaker {
+  constructor(threshold = 5, timeout = 60000) {
+    this.threshold = threshold;
+    this.timeout = timeout;
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+    this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
+  }
+
+  async execute(operation, ...args) {
+    if (this.state === 'OPEN') {
+      if (Date.now() - this.lastFailureTime > this.timeout) {
+        this.state = 'HALF_OPEN';
+      } else {
+        throw new Error('Circuit breaker is OPEN');
+      }
+    }
+
+    try {
+      const result = await operation(...args);
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+
+  onSuccess() {
+    this.failureCount = 0;
+    this.state = 'CLOSED';
+  }
+
+  onFailure() {
+    this.failureCount++;
+    this.lastFailureTime = Date.now();
+
+    if (this.failureCount >= this.threshold) {
+      this.state = 'OPEN';
+    }
+  }
+}
+
+// Usage
+const circuitBreaker = new CircuitBreaker(5, 60000); // 5 failures, 1 minute timeout
+
+try {
+  const payment = await circuitBreaker.execute(
+    unipay.createPayment,
+    paymentData
+  );
+} catch (error) {
+  if (error.message === 'Circuit breaker is OPEN') {
+    console.log('Payment service temporarily unavailable');
+    // Use fallback or show maintenance message
+  } else {
+    console.error('Payment failed:', error);
+  }
+}
+```
+
+## Monitoring and Alerting
+
+### Error Metrics
+
+```javascript
+class ErrorMetrics {
+  constructor() {
+    this.errors = new Map();
+    this.alertThresholds = {
+      'PROVIDER_ERROR': 10,    // Alert after 10 provider errors
+      'NETWORK_ERROR': 5,       // Alert after 5 network errors
+      'CONFIGURATION_ERROR': 1  // Alert immediately for config errors
+    };
+  }
+
+  recordError(errorCategory, error) {
+    const count = this.errors.get(errorCategory) || 0;
+    this.errors.set(errorCategory, count + 1);
+
+    // Check if we should send alert
+    const threshold = this.alertThresholds[errorCategory];
+    if (threshold && count + 1 >= threshold) {
+      this.sendAlert(errorCategory, error);
+    }
+  }
+
+  sendAlert(errorCategory, error) {
+    console.error(`ALERT: High number of ${errorCategory} errors detected`, {
+      count: this.errors.get(errorCategory),
+      latestError: error.message,
+      timestamp: new Date().toISOString()
+    });
+
+    // Send to monitoring service (PagerDuty, Slack, etc.)
+    // this.notifyMonitoringService(errorCategory, error);
+  }
+
+  getMetrics() {
+    const total = Array.from(this.errors.values()).reduce((sum, count) => sum + count, 0);
+    return {
+      total,
+      byCategory: Object.fromEntries(this.errors),
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  reset() {
+    this.errors.clear();
+  }
+}
+```
+
+### Health Check
+
+```javascript
+class HealthChecker {
+  constructor(unipay) {
+    this.unipay = unipay;
+  }
+
+  async checkHealth() {
+    try {
+      // Try to get client (this tests configuration and connectivity)
+      await this.unipay.getClient();
+      
+      return {
+        status: 'healthy',
+        provider: this.unipay.getProvider()?.constructor.name || 'unknown',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        error: error.message,
+        provider: this.unipay.getProvider()?.constructor.name || 'unknown',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+}
+
+// Express.js health check endpoint
+app.get('/health', async (req, res) => {
+  const healthChecker = new HealthChecker(unipay);
+  const health = await healthChecker.checkHealth();
+  
+  const statusCode = health.status === 'healthy' ? 200 : 503;
+  res.status(statusCode).json(health);
+});
+```
+
+## Best Practices
+
+### 1. Always Handle Errors
+
+```javascript
+// ❌ Bad - No error handling
+const payment = await unipay.createPayment(data);
+
+// ✅ Good - Proper error handling
+try {
+  const payment = await unipay.createPayment(data);
+  // Process successful payment
+} catch (error) {
+  // Handle error appropriately
+  console.error('Payment failed:', error);
+  // Show user-friendly message
+  // Log error for debugging
+  // Consider retry if appropriate
+}
+```
+
+### 2. Provide User-Friendly Messages
+
+```javascript
+const getUserFriendlyMessage = (error) => {
+  const errorMessages = {
+    'CONFIGURATION_ERROR': 'Payment service is temporarily unavailable.',
+    'PROVIDER_ERROR': 'Payment processing failed. Please try again.',
+    'NETWORK_ERROR': 'Connection failed. Please check your internet.',
+    'VALIDATION_ERROR': 'Invalid payment information provided.'
+  };
+
+  return errorMessages[error.category] || 'An unexpected error occurred.';
+};
+```
+
+### 3. Log Errors for Debugging
+
+```javascript
+const logError = (error, context = {}) => {
+  const logData = {
+    timestamp: new Date().toISOString(),
+    error: {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    },
+    context
+  };
+
+  // In production, send to logging service
+  if (process.env.NODE_ENV === 'production') {
+    // Sentry.captureException(error, { extra: context });
+  } else {
+    console.error('Payment Error:', logData);
+  }
+};
+```
+
+### 4. Implement Graceful Degradation
+
+```javascript
+class PaymentService {
+  async processPayment(paymentData) {
+    try {
+      // Try primary payment method
+      return await this.unipay.createPayment(paymentData);
+    } catch (error) {
+      console.error('Primary payment failed:', error);
+      
+      // Fallback to alternative method
+      try {
+        return await this.processAlternativePayment(paymentData);
+      } catch (fallbackError) {
+        console.error('Fallback payment failed:', fallbackError);
+        throw new Error('All payment methods failed');
+      }
+    }
+  }
+}
+```
+
+By implementing these error handling strategies, you can build robust payment integrations that gracefully handle failures and provide excellent user experience even when things go wrong.

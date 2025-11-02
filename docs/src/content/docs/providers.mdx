@@ -1,0 +1,384 @@
+---
+title: Payment Providers
+description: Documentation for supported payment providers and their specific features.
+route: /providers
+---
+
+# Payment Providers
+
+UniPay SDK supports multiple payment providers with a unified interface. Currently, Midtrans is fully supported with DOKU and Xendit planned for future releases.
+
+## Supported Providers
+
+| Provider | Status | Payment Methods | Features |
+|----------|--------|----------------|----------|
+| **Midtrans** | ✅ Fully Supported | Credit Card, Virtual Account, E-wallet, QRIS, Retail | Snap payments, Core API, Webhooks |
+| **DOKU** | 🚧 Planned | Credit Card, Virtual Account, E-wallet | Coming soon |
+| **Xendit** | 🚧 Planned | Credit Card, Virtual Account, E-wallet, QRIS | Coming soon |
+
+---
+
+## Midtrans Provider
+
+Midtrans is a leading payment gateway in Indonesia that supports various payment methods including credit cards, virtual accounts, e-wallets, and retail payments.
+
+### Configuration
+
+```javascript
+const midtransConfig = {
+  client_id: 'your-client-id',
+  secret_key: 'your-server-key',
+  public_key: 'your-client-key', // optional
+  is_production: false // set to true for production
+};
+```
+
+### Getting Credentials
+
+1. Sign up at [Midtrans Dashboard](https://dashboard.midtrans.com/)
+2. Navigate to Settings → Integration
+3. Copy your Server Key and Client Key
+4. Use Server Key as `secret_key` and Client Key as `public_key`
+
+### Payment Methods
+
+#### 1. Snap Payments (Redirect/Popup)
+
+Snap provides a simple payment page that supports multiple payment methods.
+
+```javascript
+import { Unipay } from '@fiandev/unipay-sdk';
+
+const unipay = new Unipay({
+  provider: 'midtrans',
+  config: midtransConfig
+});
+
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-' + Date.now(),
+  amount: 10000,
+  customerEmail: 'customer@example.com',
+  customerName: 'John Doe',
+  description: 'Product purchase'
+});
+
+// Response includes redirect_url and token
+console.log(payment.metadata.redirect_url);
+console.log(payment.metadata.token);
+```
+
+**Response:**
+```javascript
+{
+  provider: "midtrans",
+  orderId: "ORDER-123",
+  amount: 10000,
+  status: "pending",
+  metadata: {
+    token: "snap-token-abc123",
+    redirect_url: "https://app.midtrans.com/snap/v2/vtweb/abc123"
+  }
+}
+```
+
+#### 2. Virtual Accounts
+
+Create virtual accounts for various banks:
+
+```javascript
+const va = await unipay.createVirtualAccount({
+  orderId: 'VA-' + Date.now(),
+  amount: 50000,
+  bankCode: 'bca', // Available: bca, bni, bri, mandiri, cimb, permata
+  customerEmail: 'customer@example.com',
+  customerName: 'Jane Doe'
+});
+
+// Response contains VA numbers
+console.log(va.metadata.va_numbers);
+```
+
+**Supported Banks:**
+- `bca` - BCA Virtual Account
+- `bni` - BNI Virtual Account
+- `bri` - BRI Virtual Account
+- `mandiri` - Mandiri Virtual Account
+- `cimb` - CIMB Niaga Virtual Account
+- `permata` - Permata Virtual Account
+
+**Response:**
+```javascript
+{
+  id: "transaction-123",
+  provider: "midtrans",
+  paymentId: "VA-123",
+  type: "charge",
+  status: "pending",
+  amount: 50000,
+  metadata: {
+    va_numbers: [
+      {
+        bank: "bca",
+        va_number: "1234567890"
+      }
+    ],
+    payment_type: "bank_transfer"
+  }
+}
+```
+
+### Payment Status
+
+Check the status of any payment:
+
+```javascript
+const status = await unipay.getPaymentStatus('ORDER-123');
+
+console.log(status.status); // pending, paid, failed, expired, etc.
+console.log(status.metadata.payment_type); // bank_transfer, credit_card, etc.
+```
+
+**Status Mapping:**
+| Midtrans Status | UniPay Status |
+|-----------------|---------------|
+| `pending` | `pending` |
+| `settlement` | `paid` |
+| `capture` | `paid` |
+| `deny` | `failed` |
+| `expire` | `expired` |
+| `cancel` | `cancelled` |
+
+### Payment Cancellation
+
+Cancel pending payments:
+
+```javascript
+const result = await unipay.cancelPayment('ORDER-123');
+console.log(result.status); // cancelled
+```
+
+### Advanced Features
+
+#### Custom Item Details
+
+```javascript
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-123',
+  amount: 25000,
+  customerEmail: 'customer@example.com',
+  description: 'Multiple items purchase',
+  // Custom fields for Midtrans
+  item_details: [
+    {
+      id: 'ITEM1',
+      price: 15000,
+      quantity: 1,
+      name: 'Product A'
+    },
+    {
+      id: 'ITEM2',
+      price: 10000,
+      quantity: 1,
+      name: 'Product B'
+    }
+  ]
+});
+```
+
+#### Expiry Time
+
+```javascript
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-123',
+  amount: 10000,
+  customerEmail: 'customer@example.com',
+  // Custom expiry (24 hours from now)
+  expiry: {
+    unit: 'hours',
+    duration: 24
+  }
+});
+```
+
+#### Custom Callback URLs
+
+```javascript
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-123',
+  amount: 10000,
+  customerEmail: 'customer@example.com',
+  // Custom callbacks
+  callback_url: 'https://yourapp.com/callback',
+  finish_redirect_url: 'https://yourapp.com/success',
+  error_redirect_url: 'https://yourapp.com/error'
+});
+```
+
+### Webhook Handling
+
+Midtrans sends webhook notifications for payment status changes. Here's how to handle them:
+
+```javascript
+import crypto from 'crypto';
+
+function verifyWebhook(notificationBody, signatureKey) {
+  const orderId = notificationBody.order_id;
+  const statusCode = notificationBody.status_code;
+  const grossAmount = notificationBody.gross_amount;
+  
+  const input = orderId + statusCode + grossAmount + signatureKey;
+  const hash = crypto.createHash('sha512').update(input).digest('hex');
+  
+  return hash === notificationBody.signature_key;
+}
+
+// Express.js example
+app.post('/webhook/midtrans', (req, res) => {
+  const notification = req.body;
+  
+  if (!verifyWebhook(notification, 'your-server-key')) {
+    return res.status(401).send('Invalid signature');
+  }
+  
+  // Process notification
+  console.log('Payment status:', notification.transaction_status);
+  console.log('Order ID:', notification.order_id);
+  
+  res.status(200).send('OK');
+});
+```
+
+### Error Handling
+
+Midtrans-specific errors:
+
+```javascript
+try {
+  const payment = await unipay.createPayment(paymentData);
+} catch (error) {
+  if (error.message.includes('MidtransError')) {
+    // Handle Midtrans API errors
+    console.error('Midtrans API error:', error.message);
+  } else if (error.message.includes('Missing required config')) {
+    // Handle configuration errors
+    console.error('Configuration error:', error.message);
+  }
+}
+```
+
+### Testing
+
+Use Midtrans sandbox for testing:
+
+```javascript
+const testConfig = {
+  client_id: 'your-sandbox-client-id',
+  secret_key: 'your-sandbox-server-key',
+  public_key: 'your-sandbox-client-key',
+  is_production: false,
+  debug: true // Enable debug logs
+};
+```
+
+**Test Cards:**
+- Visa: `4811111111111114`
+- Mastercard: `5211111111111117`
+- CVV: `123`
+- Expiry: Any future date
+
+### Rate Limits
+
+Midtrans API has rate limits:
+- Snap API: 100 requests/minute
+- Core API: 100 requests/minute
+- Status API: 1000 requests/minute
+
+Implement retry logic for rate-limited requests:
+
+```javascript
+async function createPaymentWithRetry(data, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await unipay.createPayment(data);
+    } catch (error) {
+      if (error.message.includes('rate limit') && i < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+```
+
+---
+
+## Future Providers
+
+### DOKU (Planned)
+
+DOKU is another major Indonesian payment gateway that will be supported in future releases.
+
+**Planned Features:**
+- Credit card payments
+- Virtual accounts
+- E-wallet integration
+- QR code payments
+
+### Xendit (Planned)
+
+Xendit is a modern payment gateway serving Southeast Asia.
+
+**Planned Features:**
+- Credit card processing
+- Virtual accounts
+- E-wallets (OVO, Dana, etc.)
+- Disbursements
+- Retail payments
+
+---
+
+## Provider Comparison
+
+| Feature | Midtrans | DOKU (Planned) | Xendit (Planned) |
+|---------|----------|----------------|------------------|
+| Credit Cards | ✅ | ✅ | ✅ |
+| Virtual Accounts | ✅ | ✅ | ✅ |
+| E-wallets | ✅ | ✅ | ✅ |
+| QRIS | ✅ | ✅ | ✅ |
+| Retail | ✅ | ✅ | ❌ |
+| Disbursements | ❌ | ✅ | ✅ |
+| Recurring | ✅ | ✅ | ✅ |
+| Webhooks | ✅ | ✅ | ✅ |
+
+---
+
+## Migrating Between Providers
+
+Thanks to the unified interface, switching providers is straightforward:
+
+```javascript
+// Current: Midtrans
+const unipay = new Unipay({
+  provider: 'midtrans',
+  config: midtransConfig
+});
+
+// Switch to: DOKU (when available)
+const unipay = new Unipay({
+  provider: 'doku',
+  config: dokuConfig
+});
+
+// Your existing code remains the same!
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-123',
+  amount: 10000,
+  customerEmail: 'customer@example.com'
+});
+```
+
+The only changes needed are:
+1. Update the provider name
+2. Update configuration parameters
+3. Handle any provider-specific features in metadata

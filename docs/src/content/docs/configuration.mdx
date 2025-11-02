@@ -1,0 +1,565 @@
+---
+title: Configuration
+description: Comprehensive guide to configuring UniPay SDK and payment providers.
+---
+
+# Configuration
+
+This guide covers all configuration options available in UniPay SDK, including provider-specific settings, environment variables, and best practices.
+
+## Basic Configuration
+
+### Core Configuration Structure
+
+```javascript
+const unipay = new Unipay({
+  provider: 'midtrans', // Provider identifier
+  config: {
+    // Provider-specific configuration
+    client_id: 'your-client-id',
+    secret_key: 'your-secret-key',
+    public_key: 'your-public-key',
+    is_production: false,
+    
+    // Optional settings
+    debug: false,
+    enable_logging: false,
+    
+    // Custom provider settings
+    timeout: 30000,
+    retry_attempts: 3
+  }
+});
+```
+
+## Provider Configuration
+
+### Midtrans Configuration
+
+```javascript
+const midtransConfig = {
+  // Required fields
+  client_id: 'your-client-id',           // From Midtrans dashboard
+  secret_key: 'your-server-key',         // Server Key from dashboard
+  is_production: false,                  // true for production environment
+  
+  // Optional fields
+  public_key: 'your-client-key',        // Client Key from dashboard
+  debug: false,                          // Enable debug logging
+  enable_logging: false,                 // Enable detailed logging
+  
+  // Midtrans-specific settings
+  environment: 'sandbox',                 // 'sandbox' or 'production'
+  timeout: 30000,                        // Request timeout in ms
+  retry_attempts: 3,                     // Number of retry attempts
+  
+  // Custom endpoints (for advanced use cases)
+  snap_api_url: 'https://app.sandbox.midtrans.com/snap/v1',
+  core_api_url: 'https://api.sandbox.midtrans.com/v2'
+};
+```
+
+### Getting Midtrans Credentials
+
+1. **Sign up** at [Midtrans Dashboard](https://dashboard.midtrans.com/)
+2. **Navigate** to Settings → Integration → API Keys
+3. **Copy credentials:**
+   - **Server Key** → Use as `secret_key`
+   - **Client Key** → Use as `public_key`
+   - **Merchant ID** → Use as `client_id`
+
+### Environment-Specific Configuration
+
+#### Development Environment
+
+```javascript
+const devConfig = {
+  provider: 'midtrans',
+  config: {
+    client_id: process.env.MIDTRANS_CLIENT_ID,
+    secret_key: process.env.MIDTRANS_SECRET_KEY,
+    public_key: process.env.MIDTRANS_PUBLIC_KEY,
+    is_production: false,
+    debug: true,
+    enable_logging: true,
+    timeout: 30000
+  }
+};
+```
+
+#### Production Environment
+
+```javascript
+const prodConfig = {
+  provider: 'midtrans',
+  config: {
+    client_id: process.env.MIDTRANS_CLIENT_ID,
+    secret_key: process.env.MIDTRANS_SECRET_KEY,
+    public_key: process.env.MIDTRANS_PUBLIC_KEY,
+    is_production: true,
+    debug: false,
+    enable_logging: false,
+    timeout: 60000,
+    retry_attempts: 5
+  }
+};
+```
+
+## Environment Variables
+
+### .env File Setup
+
+Create a `.env` file in your project root:
+
+```bash
+# Midtrans Configuration
+MIDTRANS_CLIENT_ID=your-merchant-id
+MIDTRANS_SECRET_KEY=your-server-key
+MIDTRANS_PUBLIC_KEY=your-client-key
+MIDTRANS_IS_PRODUCTION=false
+
+# UniPay Configuration
+UNIPAY_DEBUG=false
+UNIPAY_ENABLE_LOGGING=false
+UNIPAY_TIMEOUT=30000
+UNIPAY_RETRY_ATTEMPTS=3
+
+# Application Configuration
+NODE_ENV=development
+```
+
+### Loading Environment Variables
+
+```javascript
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+// Configuration with environment variables
+const config = {
+  provider: 'midtrans',
+  config: {
+    client_id: process.env.MIDTRANS_CLIENT_ID,
+    secret_key: process.env.MIDTRANS_SECRET_KEY,
+    public_key: process.env.MIDTRANS_PUBLIC_KEY,
+    is_production: process.env.MIDTRANS_IS_PRODUCTION === 'true',
+    debug: process.env.UNIPAY_DEBUG === 'true',
+    enable_logging: process.env.UNIPAY_ENABLE_LOGGING === 'true',
+    timeout: parseInt(process.env.UNIPAY_TIMEOUT) || 30000,
+    retry_attempts: parseInt(process.env.UNIPAY_RETRY_ATTEMPTS) || 3
+  }
+};
+```
+
+## Advanced Configuration
+
+### Custom Provider Registration
+
+```javascript
+import { ProviderFactory, BaseProvider } from '@fiandev/unipay-sdk';
+
+class CustomProvider extends BaseProvider {
+  constructor(config) {
+    super(config);
+    this.validateConfig(['api_key', 'merchant_id']);
+  }
+
+  protected override async initializeClient() {
+    // Initialize custom provider client
+    return {
+      apiKey: this.config.api_key,
+      merchantId: this.config.merchant_id,
+      environment: this.config.is_production ? 'production' : 'sandbox'
+    };
+  }
+
+  async createPayment(data) {
+    const client = await this.getClient();
+    // Custom payment logic
+    return this.standardizePaymentResponse('custom', {
+      orderId: data.orderId,
+      amount: data.amount,
+      status: 'pending'
+    });
+  }
+}
+
+// Register custom provider with default configuration
+ProviderFactory.register('custom', CustomProvider, {
+  is_production: false,
+  timeout: 30000,
+  debug: false
+});
+
+// Create instance with custom configuration
+const customProvider = ProviderFactory.create('custom', {
+  api_key: 'your-api-key',
+  merchant_id: 'your-merchant-id',
+  is_production: true
+});
+```
+
+### Multi-Provider Configuration
+
+```javascript
+class PaymentGatewayManager {
+  constructor() {
+    this.providers = new Map();
+    this.initializeProviders();
+  }
+
+  initializeProviders() {
+    // Primary provider (Midtrans)
+    this.providers.set('primary', new Unipay({
+      provider: 'midtrans',
+      config: {
+        client_id: process.env.MIDTRANS_CLIENT_ID,
+        secret_key: process.env.MIDTRANS_SECRET_KEY,
+        is_production: false
+      }
+    }));
+
+    // Backup provider (when available)
+    // this.providers.set('backup', new Unipay({
+    //   provider: 'xendit',
+    //   config: xenditConfig
+    // }));
+  }
+
+  getProvider(name = 'primary') {
+    return this.providers.get(name);
+  }
+
+  async createPaymentWithFallback(paymentData) {
+    const primaryProvider = this.getProvider('primary');
+    
+    try {
+      return await primaryProvider.createPayment(paymentData);
+    } catch (error) {
+      console.error('Primary provider failed:', error);
+      
+      // Fallback to backup provider
+      const backupProvider = this.getProvider('backup');
+      if (backupProvider) {
+        return await backupProvider.createPayment(paymentData);
+      }
+      
+      throw error;
+    }
+  }
+}
+```
+
+## Configuration Validation
+
+### Custom Validation
+
+```javascript
+class ConfigValidator {
+  static validateMidtransConfig(config) {
+    const required = ['client_id', 'secret_key'];
+    const missing = required.filter(field => !config[field]);
+    
+    if (missing.length > 0) {
+      throw new Error(`Missing required Midtrans config: ${missing.join(', ')}`);
+    }
+
+    // Validate environment
+    if (typeof config.is_production !== 'boolean') {
+      throw new Error('is_production must be a boolean');
+    }
+
+    // Validate timeout
+    if (config.timeout && (config.timeout < 1000 || config.timeout > 300000)) {
+      throw new Error('timeout must be between 1000ms and 300000ms');
+    }
+
+    return true;
+  }
+
+  static validateEnvironment() {
+    const requiredEnvVars = [
+      'MIDTRANS_CLIENT_ID',
+      'MIDTRANS_SECRET_KEY'
+    ];
+
+    const missing = requiredEnvVars.filter(envVar => !process.env[envVar]);
+    
+    if (missing.length > 0) {
+      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
+  }
+}
+
+// Usage
+try {
+  ConfigValidator.validateEnvironment();
+  ConfigValidator.validateMidtransConfig(midtransConfig);
+  
+  const unipay = new Unipay({
+    provider: 'midtrans',
+    config: midtransConfig
+  });
+} catch (error) {
+  console.error('Configuration validation failed:', error.message);
+  process.exit(1);
+}
+```
+
+## Configuration Best Practices
+
+### 1. Environment-Based Configuration
+
+```javascript
+const getConfig = () => {
+  const env = process.env.NODE_ENV || 'development';
+  
+  const baseConfig = {
+    provider: 'midtrans',
+    config: {
+      client_id: process.env.MIDTRANS_CLIENT_ID,
+      secret_key: process.env.MIDTRANS_SECRET_KEY,
+      public_key: process.env.MIDTRANS_PUBLIC_KEY
+    }
+  };
+
+  const envConfigs = {
+    development: {
+      ...baseConfig,
+      config: {
+        ...baseConfig.config,
+        is_production: false,
+        debug: true,
+        enable_logging: true,
+        timeout: 30000
+      }
+    },
+    
+    staging: {
+      ...baseConfig,
+      config: {
+        ...baseConfig.config,
+        is_production: false,
+        debug: true,
+        enable_logging: true,
+        timeout: 45000
+      }
+    },
+    
+    production: {
+      ...baseConfig,
+      config: {
+        ...baseConfig.config,
+        is_production: true,
+        debug: false,
+        enable_logging: false,
+        timeout: 60000,
+        retry_attempts: 5
+      }
+    }
+  };
+
+  return envConfigs[env] || envConfigs.development;
+};
+
+const unipay = new Unipay(getConfig());
+```
+
+### 2. Configuration Schema
+
+```javascript
+const configSchema = {
+  required: ['client_id', 'secret_key'],
+  optional: {
+    public_key: 'string',
+    is_production: 'boolean',
+    debug: 'boolean',
+    enable_logging: 'boolean',
+    timeout: 'number',
+    retry_attempts: 'number'
+  },
+  defaults: {
+    is_production: false,
+    debug: false,
+    enable_logging: false,
+    timeout: 30000,
+    retry_attempts: 3
+  }
+};
+
+function applyConfigSchema(userConfig, schema) {
+  const config = { ...schema.defaults, ...userConfig };
+  
+  // Validate required fields
+  for (const field of schema.required) {
+    if (!config[field]) {
+      throw new Error(`Required field '${field}' is missing`);
+    }
+  }
+  
+  // Validate optional field types
+  for (const [field, type] of Object.entries(schema.optional)) {
+    if (config[field] !== undefined && typeof config[field] !== type) {
+      throw new Error(`Field '${field}' must be of type ${type}`);
+    }
+  }
+  
+  return config;
+}
+```
+
+### 3. Secure Configuration Management
+
+```javascript
+import { encrypt, decrypt } from './crypto-utils';
+
+class SecureConfig {
+  static encryptConfig(config, encryptionKey) {
+    const sensitiveFields = ['secret_key', 'client_id'];
+    const encryptedConfig = { ...config };
+    
+    for (const field of sensitiveFields) {
+      if (encryptedConfig[field]) {
+        encryptedConfig[field] = encrypt(encryptedConfig[field], encryptionKey);
+      }
+    }
+    
+    return encryptedConfig;
+  }
+
+  static decryptConfig(config, encryptionKey) {
+    const sensitiveFields = ['secret_key', 'client_id'];
+    const decryptedConfig = { ...config };
+    
+    for (const field of sensitiveFields) {
+      if (decryptedConfig[field]) {
+        decryptedConfig[field] = decrypt(decryptedConfig[field], encryptionKey);
+      }
+    }
+    
+    return decryptedConfig;
+  }
+}
+
+// Usage
+const encryptionKey = process.env.CONFIG_ENCRYPTION_KEY;
+const encryptedConfig = SecureConfig.encryptConfig(midtransConfig, encryptionKey);
+
+// Store encrypted config securely
+// Later, decrypt when needed
+const decryptedConfig = SecureConfig.decryptConfig(encryptedConfig, encryptionKey);
+```
+
+## Configuration Templates
+
+### E-commerce Template
+
+```javascript
+const ecommerceConfig = {
+  provider: 'midtrans',
+  config: {
+    client_id: process.env.MIDTRANS_CLIENT_ID,
+    secret_key: process.env.MIDTRANS_SECRET_KEY,
+    public_key: process.env.MIDTRANS_PUBLIC_KEY,
+    is_production: process.env.NODE_ENV === 'production',
+    
+    // E-commerce specific settings
+    enable_3ds: true,
+    enable_installment: true,
+    installment_terms: [3, 6, 12],
+    
+    // Callback URLs
+    callback_url: process.env.PAYMENT_CALLBACK_URL,
+    finish_redirect_url: process.env.PAYMENT_SUCCESS_URL,
+    error_redirect_url: process.env.PAYMENT_ERROR_URL,
+    
+    // Expiry settings
+    default_expiry: {
+      unit: 'hours',
+      duration: 24
+    },
+    
+    // Logging and monitoring
+    debug: process.env.NODE_ENV !== 'production',
+    enable_logging: true,
+    log_level: process.env.LOG_LEVEL || 'info'
+  }
+};
+```
+
+### SaaS Subscription Template
+
+```javascript
+const saasConfig = {
+  provider: 'midtrans',
+  config: {
+    client_id: process.env.MIDTRANS_CLIENT_ID,
+    secret_key: process.env.MIDTRANS_SECRET_KEY,
+    is_production: process.env.NODE_ENV === 'production',
+    
+    // Subscription specific settings
+    recurring_enabled: true,
+    max_recurring_cycles: 12,
+    
+    // Customer data handling
+    save_customer_card: true,
+    one_click_payment: true,
+    
+    // Webhook configuration
+    webhook_url: process.env.WEBHOOK_URL,
+    webhook_signature_key: process.env.WEBHOOK_SIGNATURE_KEY,
+    
+    // Security settings
+    enable_3ds: true,
+    fraud_detection: true,
+    
+    // Retry configuration
+    retry_failed_payments: true,
+    max_retry_attempts: 3,
+    retry_interval_days: 1
+  }
+};
+```
+
+## Troubleshooting Configuration
+
+### Common Configuration Issues
+
+1. **Missing Credentials**
+   ```javascript
+   // Error: Missing required config fields: client_id, secret_key
+   // Solution: Ensure all required fields are provided
+   ```
+
+2. **Environment Mismatch**
+   ```javascript
+   // Error: API returns 401 Unauthorized
+   // Solution: Check is_production setting matches your credentials
+   ```
+
+3. **Invalid Timeout**
+   ```javascript
+   // Error: Request timeout
+   // Solution: Increase timeout value or check network connectivity
+   ```
+
+### Debug Configuration
+
+```javascript
+// Enable debug mode to troubleshoot issues
+const debugConfig = {
+  provider: 'midtrans',
+  config: {
+    client_id: process.env.MIDTRANS_CLIENT_ID,
+    secret_key: process.env.MIDTRANS_SECRET_KEY,
+    is_production: false,
+    debug: true,           // Enable debug logs
+    enable_logging: true,   // Enable detailed logging
+    log_requests: true,    // Log all API requests
+    log_responses: true    // Log all API responses
+  }
+};
+```
+
+This comprehensive configuration guide should help you set up UniPay SDK correctly for any use case. Always ensure sensitive credentials are properly secured and never committed to version control.

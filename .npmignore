@@ -20,7 +20,8 @@ coverage/
 *.lcov
 *.tsbuildinfo
 
-# Documentation
+# Documentation (exclude from npm package)
+docs/
 README.md
 CHANGELOG.md
 

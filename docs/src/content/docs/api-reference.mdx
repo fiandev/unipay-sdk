@@ -1,0 +1,436 @@
+---
+title: API Reference
+description: Complete API documentation for UniPay SDK.
+---
+
+# API Reference
+
+This section provides comprehensive documentation for all classes, methods, and interfaces available in UniPay SDK.
+
+## Core Classes
+
+### Unipay
+
+The main class that provides a unified interface for all payment providers.
+
+#### Constructor
+
+```typescript
+constructor(options: Record<string, any>)
+```
+
+**Parameters:**
+- `options` - Configuration options object
+
+**Example:**
+```javascript
+const unipay = new Unipay({
+  provider: 'midtrans',
+  config: {
+    client_id: 'your-client-id',
+    secret_key: 'your-secret-key',
+    is_production: false
+  }
+});
+```
+
+#### Methods
+
+##### setProvider()
+
+```typescript
+setProvider(provider: ProviderInterface): void
+```
+
+Sets a payment provider instance.
+
+**Parameters:**
+- `provider` - Provider instance implementing ProviderInterface
+
+##### getProvider()
+
+```typescript
+getProvider(): ProviderInterface | null
+```
+
+Returns the current provider instance.
+
+##### getClient()
+
+```typescript
+getClient(): Promise<any>
+```
+
+Returns the provider's native client instance.
+
+##### createPayment()
+
+```typescript
+createPayment(data: PaymentData): Promise<BasePayment>
+```
+
+Creates a payment transaction.
+
+**Parameters:**
+- `data` - Payment data object
+
+**Returns:** Promise resolving to BasePayment object
+
+##### createVirtualAccount()
+
+```typescript
+createVirtualAccount(data: VirtualAccountData): Promise<Transaction>
+```
+
+Creates a virtual account payment.
+
+**Parameters:**
+- `data` - Virtual account data object
+
+**Returns:** Promise resolving to Transaction object
+
+##### getPaymentStatus()
+
+```typescript
+getPaymentStatus(referenceId: string): Promise<BasePayment>
+```
+
+Retrieves payment status.
+
+**Parameters:**
+- `referenceId` - Payment reference ID
+
+**Returns:** Promise resolving to BasePayment object
+
+##### cancelPayment()
+
+```typescript
+cancelPayment(referenceId: string): Promise<BasePayment>
+```
+
+Cancels a payment.
+
+**Parameters:**
+- `referenceId` - Payment reference ID
+
+**Returns:** Promise resolving to BasePayment object
+
+##### snap() (Deprecated)
+
+```typescript
+snap(): Promise<any>
+```
+
+Legacy method for backward compatibility. Use `getClient()` instead.
+
+---
+
+### ProviderFactory
+
+Factory class for creating and managing payment provider instances.
+
+#### Static Methods
+
+##### register()
+
+```typescript
+static register(
+  type: ProviderType,
+  providerClass: new (config: ConfigProviderParams) => ProviderInterface,
+  defaultConfig?: Partial<ConfigProviderParams>
+): void
+```
+
+Registers a new provider type.
+
+**Parameters:**
+- `type` - Provider type identifier
+- `providerClass` - Provider class constructor
+- `defaultConfig` - Optional default configuration
+
+##### create()
+
+```typescript
+static create(type: ProviderType, config: ConfigProviderParams): ProviderInterface
+```
+
+Creates a provider instance.
+
+**Parameters:**
+- `type` - Provider type
+- `config` - Provider configuration
+
+**Returns:** Provider instance
+
+##### getRegisteredProviders()
+
+```typescript
+static getRegisteredProviders(): ProviderType[]
+```
+
+Returns all registered provider types.
+
+##### isRegistered()
+
+```typescript
+static isRegistered(type: ProviderType): boolean
+```
+
+Checks if a provider type is registered.
+
+##### unregister()
+
+```typescript
+static unregister(type: ProviderType): boolean
+```
+
+Unregisters a provider type.
+
+---
+
+### BaseProvider
+
+Abstract base class for all payment providers.
+
+#### Constructor
+
+```typescript
+constructor(config: ConfigProviderParams)
+```
+
+#### Methods
+
+##### getClient()
+
+```typescript
+getClient(): Promise<any>
+```
+
+Returns the provider's client instance with lazy initialization.
+
+##### generateSignature()
+
+```typescript
+generateSignature(data: Record<string, any>): string
+```
+
+Generates provider-specific signature. Override for custom logic.
+
+##### log()
+
+```typescript
+log(message: string, context?: Record<string, any>): void
+```
+
+Logs messages when debug mode is enabled.
+
+---
+
+## Interfaces
+
+### ProviderInterface
+
+Interface that all payment providers must implement.
+
+```typescript
+interface ProviderInterface {
+  config: ConfigProviderParams;
+  getClient(): Promise<any>;
+  createPayment(data: PaymentData): Promise<BasePayment>;
+  createVirtualAccount(data: VirtualAccountData): Promise<Transaction>;
+  getPaymentStatus?(referenceId: string): Promise<BasePayment>;
+  cancelPayment?(referenceId: string): Promise<BasePayment>;
+}
+```
+
+### PaymentData
+
+Interface for payment creation data.
+
+```typescript
+interface PaymentData {
+  orderId: string;
+  amount: number;
+  currency?: string;
+  description?: string;
+  customerEmail?: string;
+  customerName?: string;
+  [key: string]: any;
+}
+```
+
+### VirtualAccountData
+
+Interface for virtual account creation data.
+
+```typescript
+interface VirtualAccountData extends PaymentData {
+  bankCode?: string;
+  vaNumber?: string;
+  expiresAt?: string;
+  [key: string]: any;
+}
+```
+
+### ConfigProviderParams
+
+Interface for provider configuration.
+
+```typescript
+interface ConfigProviderParams {
+  client_id: string;
+  secret_key: string;
+  public_key?: string;
+  is_production: boolean;
+  debug?: boolean;
+  enable_logging?: boolean;
+  [key: string]: any;
+}
+```
+
+### BasePayment
+
+Standardized payment response interface.
+
+```typescript
+interface BasePayment {
+  provider: string;
+  referenceId?: string;
+  orderId: string;
+  amount: number;
+  currency?: string;
+  method?: PaymentMethod;
+  status: PaymentStatus;
+  description?: string;
+  customerEmail?: string;
+  customerName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  expiresAt?: string;
+  metadata?: Record<string, any>;
+}
+```
+
+### Transaction
+
+Transaction history interface.
+
+```typescript
+interface Transaction {
+  id: string;
+  provider: string;
+  paymentId: string;
+  type: "charge" | "refund" | "disbursement" | "settlement" | "reversal";
+  status: PaymentStatus;
+  amount: number;
+  currency?: string;
+  createdAt: string;
+  rawResponse?: any;
+  metadata?: Record<string, any>;
+}
+```
+
+## Type Definitions
+
+### PaymentStatus
+
+```typescript
+type PaymentStatus = "pending" | "paid" | "failed" | "expired" | "refunded" | "cancelled";
+```
+
+### PaymentMethod
+
+```typescript
+type PaymentMethod = "credit_card" | "debit_card" | "bank_transfer" | "ewallet" | "qris" | "retail" | "va" | "direct_debit" | "other";
+```
+
+### ProviderType
+
+```typescript
+type ProviderType = "midtrans" | "doku" | "xendit" | string;
+```
+
+## Usage Examples
+
+### Basic Payment Creation
+
+```javascript
+import { Unipay } from '@fiandev/unipay-sdk';
+
+const unipay = new Unipay({
+  provider: 'midtrans',
+  config: {
+    client_id: 'your-client-id',
+    secret_key: 'your-secret-key',
+    is_production: false
+  }
+});
+
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-123',
+  amount: 10000,
+  customerEmail: 'customer@example.com',
+  customerName: 'John Doe'
+});
+```
+
+### Using Provider Factory
+
+```javascript
+import { ProviderFactory } from '@fiandev/unipay-sdk';
+
+const provider = ProviderFactory.create('midtrans', {
+  client_id: 'your-client-id',
+  secret_key: 'your-secret-key',
+  is_production: false
+});
+
+const payment = await provider.createPayment({
+  orderId: 'ORDER-123',
+  amount: 10000
+});
+```
+
+### Custom Provider Registration
+
+```javascript
+import { ProviderFactory, BaseProvider } from '@fiandev/unipay-sdk';
+
+class CustomProvider extends BaseProvider {
+  constructor(config) {
+    super(config);
+  }
+
+  async createPayment(data) {
+    // Custom implementation
+  }
+}
+
+ProviderFactory.register('custom', CustomProvider, {
+  is_production: false
+});
+
+const provider = ProviderFactory.create('custom', {
+  client_id: 'your-client-id',
+  secret_key: 'your-secret-key'
+});
+```
+
+## Error Handling
+
+All methods throw errors that should be caught and handled:
+
+```javascript
+try {
+  const payment = await unipay.createPayment(paymentData);
+} catch (error) {
+  console.error('Payment failed:', error.message);
+  // Handle error appropriately
+}
+```
+
+Common error types:
+- Configuration errors (missing credentials)
+- Validation errors (invalid data)
+- Provider errors (API failures)
+- Network errors (connection issues)

@@ -1,0 +1,101 @@
+---
+title: UniPay SDK
+description: Universal payment gateway SDK for Node.js that makes it easy to integrate multiple payment providers into your application.
+route: /
+---
+
+# UniPay SDK
+
+UniPay SDK is a universal payment gateway SDK for Node.js that provides a unified interface for integrating multiple payment providers into your application. Currently supporting Midtrans with plans to add DOKU and Xendit providers.
+
+## Features
+
+- 🚀 **Unified API** - Single interface for multiple payment providers
+- 🔧 **TypeScript Support** - Full TypeScript support with type definitions
+- 📦 **Multiple Module Support** - Works with both CommonJS and ES Modules
+- 🎯 **Provider Abstraction** - Easy switching between payment providers
+- 📊 **Standardized Responses** - Consistent response format across providers
+- 🔍 **Built-in Logging** - Debug and audit logging capabilities
+- ✅ **Error Handling** - Standardized error handling across providers
+
+## Quick Start
+
+### Installation
+
+```bash
+npm install @fiandev/unipay-sdk
+```
+
+### Basic Usage
+
+```javascript
+import { Unipay, MidtransProvider } from '@fiandev/unipay-sdk';
+
+// Initialize with Midtrans provider
+const unipay = new Unipay({
+  provider: 'midtrans',
+  config: {
+    client_id: 'your-client-id',
+    secret_key: 'your-secret-key',
+    is_production: false
+  }
+});
+
+// Create a payment transaction
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-123',
+  amount: 10000,
+  customerEmail: 'customer@example.com',
+  customerName: 'John Doe',
+  description: 'Test payment'
+});
+
+console.log(payment);
+```
+
+## Supported Providers
+
+| Provider | Status | Features |
+|----------|--------|----------|
+| **Midtrans** | ✅ Fully Supported | Snap payments, Virtual Accounts, Status checking, Cancellation |
+| **DOKU** | 🚧 Planned | Coming soon |
+| **Xendit** | 🚧 Planned | Coming soon |
+
+## Documentation
+
+- [Getting Started](./getting-started) - Learn the basics and setup
+- [API Reference](./api-reference) - Complete API documentation
+- [Providers](./providers) - Provider-specific documentation
+- [Examples](./examples) - Real-world usage examples
+- [Configuration](./configuration) - Configuration options
+- [Error Handling](./error-handling) - Error handling guide
+
+## Architecture
+
+UniPay SDK follows a provider-based architecture:
+
+```
+┌─────────────────┐
+│     Unipay      │  ← Main SDK interface
+└─────────┬───────┘
+          │
+┌─────────▼───────┐
+│ ProviderFactory │  ← Provider management
+└─────────┬───────┘
+          │
+┌─────────▼───────┐
+│  BaseProvider   │  ← Common functionality
+└─────────┬───────┘
+          │
+┌─────────▼───────┐
+│ MidtransProvider│  ← Provider implementation
+└─────────────────┘
+```
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](https://github.com/fiandev/unipay-sdk/blob/main/CONTRIBUTING.md) for details.
+
+## License
+
+MIT © [Fiandev](https://github.com/fiandev)

@@ -1,0 +1,642 @@
+---
+title: Examples
+description: Real-world usage examples and common implementation patterns.
+route: /examples
+---
+
+# Examples
+
+This section provides practical examples and common implementation patterns for using UniPay SDK in real-world applications.
+
+## E-commerce Integration
+
+### Basic Checkout Flow
+
+```javascript
+import { Unipay } from '@fiandev/unipay-sdk';
+
+class PaymentService {
+  constructor() {
+    this.unipay = new Unipay({
+      provider: 'midtrans',
+      config: {
+        client_id: process.env.MIDTRANS_CLIENT_ID,
+        secret_key: process.env.MIDTRANS_SECRET_KEY,
+        is_production: process.env.NODE_ENV === 'production'
+      }
+    });
+  }
+
+  async createOrderPayment(order) {
+    try {
+      const payment = await this.unipay.createPayment({
+        orderId: order.id,
+        amount: order.total,
+        customerEmail: order.customer.email,
+        customerName: order.customer.name,
+        description: `Order #${order.id}`,
+        // Include order items for better tracking
+        item_details: order.items.map(item => ({
+          id: item.id,
+          price: item.price,
+          quantity: item.quantity,
+          name: item.name
+        }))
+      });
+
+      // Save payment to database
+      await this.savePayment(payment);
+
+      return {
+        success: true,
+        paymentUrl: payment.metadata.redirect_url,
+        token: payment.metadata.token
+      };
+    } catch (error) {
+      console.error('Payment creation failed:', error);
+      throw new Error('Failed to create payment');
+    }
+  }
+
+  async savePayment(payment) {
+    // Save to your database
+    // Example with MongoDB/Sequelize:
+    await Payment.create({
+      orderId: payment.orderId,
+      provider: payment.provider,
+      amount: payment.amount,
+      status: payment.status,
+      metadata: payment.metadata
+    });
+  }
+}
+
+// Usage in Express.js route
+app.post('/api/orders/:orderId/pay', async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.orderId);
+    const paymentService = new PaymentService();
+    const result = await paymentService.createOrderPayment(order);
+    
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+```
+
+### Virtual Account for Bank Transfer
+
+```javascript
+async function createBankTransferPayment(order, bankCode) {
+  try {
+    const va = await unipay.createVirtualAccount({
+      orderId: `VA-${order.id}`,
+      amount: order.total,
+      bankCode: bankCode, // 'bca', 'bni', 'bri', etc.
+      customerEmail: order.customer.email,
+      customerName: order.customer.name,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours
+    });
+
+    // Extract VA numbers from response
+    const vaNumbers = va.metadata.va_numbers;
+    const vaInfo = vaNumbers[0]; // Get first VA number
+
+    return {
+      success: true,
+      vaNumber: vaInfo.va_number,
+      bank: vaInfo.bank,
+      amount: va.amount,
+      expiresAt: va.expiresAt
+    };
+  } catch (error) {
+    console.error('VA creation failed:', error);
+    throw error;
+  }
+}
+
+// Usage
+app.post('/api/orders/:orderId/va', async (req, res) => {
+  try {
+    const { bankCode } = req.body;
+    const order = await Order.findById(req.params.orderId);
+    const vaPayment = await createBankTransferPayment(order, bankCode);
+    
+    res.json(vaPayment);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+```
+
+## Subscription Management
+
+### Recurring Payments Setup
+
+```javascript
+class SubscriptionService {
+  async createSubscriptionPlan(plan) {
+    // Create a payment for initial subscription
+    const payment = await unipay.createPayment({
+      orderId: `SUB-${plan.id}-${Date.now()}`,
+      amount: plan.price,
+      customerEmail: plan.customerEmail,
+      customerName: plan.customerName,
+      description: `${plan.name} Subscription`,
+      // Custom data for subscription tracking
+      subscription_id: plan.id,
+      billing_cycle: plan.billingCycle
+    });
+
+    return payment;
+  }
+
+  async handleSubscriptionRenewal(subscription) {
+    try {
+      const payment = await unipay.createPayment({
+        orderId: `RENEW-${subscription.id}-${Date.now()}`,
+        amount: subscription.amount,
+        customerEmail: subscription.customerEmail,
+        customerName: subscription.customerName,
+        description: `Subscription renewal - ${subscription.planName}`
+      });
+
+      // Update subscription with new payment info
+      await Subscription.findByIdAndUpdate(subscription.id, {
+        lastPaymentAt: new Date(),
+        nextBillingAt: this.calculateNextBilling(subscription.billingCycle),
+        paymentStatus: 'pending'
+      });
+
+      return payment;
+    } catch (error) {
+      console.error('Renewal failed:', error);
+      // Handle failed renewal (notify user, retry logic, etc.)
+      throw error;
+    }
+  }
+
+  calculateNextBilling(billingCycle) {
+    const now = new Date();
+    switch (billingCycle) {
+      case 'monthly':
+        return new Date(now.setMonth(now.getMonth() + 1));
+      case 'yearly':
+        return new Date(now.setFullYear(now.getFullYear() + 1));
+      default:
+        return new Date(now.setDate(now.getDate() + 30));
+    }
+  }
+}
+```
+
+## Marketplace Integration
+
+### Multi-vendor Payments
+
+```javascript
+class MarketplacePaymentService {
+  async createMarketplacePayment(order) {
+    // Calculate platform fee and vendor payouts
+    const platformFee = order.total * 0.05; // 5% platform fee
+    const vendorTotal = order.total - platformFee;
+
+    try {
+      // Create main payment for customer
+      const payment = await unipay.createPayment({
+        orderId: `MP-${order.id}`,
+        amount: order.total,
+        customerEmail: order.customer.email,
+        customerName: order.customer.name,
+        description: `Marketplace order #${order.id}`,
+        // Marketplace-specific metadata
+        marketplace_data: {
+          vendors: order.items.map(item => ({
+            vendorId: item.vendorId,
+            amount: item.price * item.quantity,
+            platformFee: (item.price * item.quantity) * 0.05
+          })),
+          totalPlatformFee: platformFee
+        }
+      });
+
+      // Record vendor payouts for later disbursement
+      await this.recordVendorPayouts(order, payment);
+
+      return payment;
+    } catch (error) {
+      console.error('Marketplace payment failed:', error);
+      throw error;
+    }
+  }
+
+  async recordVendorPayouts(order, payment) {
+    const payouts = order.items.map(item => ({
+      vendorId: item.vendorId,
+      orderId: order.id,
+      paymentId: payment.orderId,
+      amount: item.price * item.quantity,
+      platformFee: (item.price * item.quantity) * 0.05,
+      netAmount: (item.price * item.quantity) * 0.95,
+      status: 'pending'
+    }));
+
+    await Payout.insertMany(payouts);
+  }
+}
+```
+
+## Webhook Handling
+
+### Comprehensive Webhook Processor
+
+```javascript
+import crypto from 'crypto';
+import express from 'express';
+
+class WebhookHandler {
+  constructor(unipay, secretKey) {
+    this.unipay = unipay;
+    this.secretKey = secretKey;
+  }
+
+  verifyMidtransSignature(notification) {
+    const orderId = notification.order_id;
+    const statusCode = notification.status_code;
+    const grossAmount = notification.gross_amount;
+    
+    const input = orderId + statusCode + grossAmount + this.secretKey;
+    const expectedHash = crypto.createHash('sha512').update(input).digest('hex');
+    
+    return notification.signature_key === expectedHash;
+  }
+
+  async handlePaymentNotification(notification) {
+    try {
+      // Verify webhook signature
+      if (!this.verifyMidtransSignature(notification)) {
+        throw new Error('Invalid webhook signature');
+      }
+
+      const { order_id, transaction_status, payment_type, gross_amount } = notification;
+
+      // Update payment status in database
+      const payment = await Payment.findOne({ orderId: order_id });
+      if (!payment) {
+        console.error('Payment not found:', order_id);
+        return;
+      }
+
+      // Update payment record
+      payment.status = this.mapMidtransStatus(transaction_status);
+      payment.updatedAt = new Date();
+      payment.metadata = {
+        ...payment.metadata,
+        payment_type,
+        gross_amount,
+        transaction_time: notification.transaction_time
+      };
+
+      await payment.save();
+
+      // Trigger business logic based on status
+      await this.processPaymentStatus(payment, notification);
+
+      console.log(`Payment ${order_id} updated to ${transaction_status}`);
+    } catch (error) {
+      console.error('Webhook processing failed:', error);
+      throw error;
+    }
+  }
+
+  mapMidtransStatus(midtransStatus) {
+    const statusMap = {
+      'pending': 'pending',
+      'settlement': 'paid',
+      'capture': 'paid',
+      'deny': 'failed',
+      'expire': 'expired',
+      'cancel': 'cancelled'
+    };
+    return statusMap[midtransStatus] || 'pending';
+  }
+
+  async processPaymentStatus(payment, notification) {
+    switch (payment.status) {
+      case 'paid':
+        await this.handleSuccessfulPayment(payment, notification);
+        break;
+      case 'failed':
+        await this.handleFailedPayment(payment, notification);
+        break;
+      case 'expired':
+        await this.handleExpiredPayment(payment, notification);
+        break;
+      case 'cancelled':
+        await this.handleCancelledPayment(payment, notification);
+        break;
+    }
+  }
+
+  async handleSuccessfulPayment(payment, notification) {
+    // Update order status
+    await Order.findOneAndUpdate(
+      { id: payment.orderId },
+      { status: 'paid', paidAt: new Date() }
+    );
+
+    // Send confirmation email
+    await this.sendPaymentConfirmation(payment);
+
+    // Update inventory
+    await this.updateInventory(payment.orderId);
+
+    // Process vendor payouts (for marketplace)
+    if (payment.metadata.marketplace_data) {
+      await this.processVendorPayouts(payment);
+    }
+  }
+
+  async handleFailedPayment(payment, notification) {
+    // Notify customer of payment failure
+    await this.notifyPaymentFailure(payment);
+
+    // Update order status
+    await Order.findOneAndUpdate(
+      { id: payment.orderId },
+      { status: 'payment_failed' }
+    );
+  }
+
+  async sendPaymentConfirmation(payment) {
+    // Implement email sending logic
+    console.log(`Sending payment confirmation for ${payment.orderId}`);
+  }
+
+  async updateInventory(orderId) {
+    // Implement inventory update logic
+    console.log(`Updating inventory for order ${orderId}`);
+  }
+}
+
+// Express.js webhook endpoint
+const webhookHandler = new WebhookHandler(unipay, process.env.MIDTRANS_SECRET_KEY);
+
+app.post('/webhook/midtrans', express.raw({ type: 'application/json' }), (req, res) => {
+  try {
+    const notification = JSON.parse(req.body);
+    webhookHandler.handlePaymentNotification(notification);
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(400).send('Webhook processing failed');
+  }
+});
+```
+
+## Error Handling & Retry Logic
+
+### Robust Payment Processing
+
+```javascript
+class RobustPaymentService {
+  constructor(unipay) {
+    this.unipay = unipay;
+    this.maxRetries = 3;
+    this.retryDelay = 1000; // 1 second
+  }
+
+  async createPaymentWithRetry(paymentData, customMaxRetries = null) {
+    const maxRetries = customMaxRetries || this.maxRetries;
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Payment attempt ${attempt}/${maxRetries} for order ${paymentData.orderId}`);
+        
+        const payment = await this.unipay.createPayment(paymentData);
+        
+        if (attempt > 1) {
+          console.log(`Payment succeeded on attempt ${attempt} for order ${paymentData.orderId}`);
+        }
+        
+        return payment;
+      } catch (error) {
+        lastError = error;
+        console.error(`Payment attempt ${attempt} failed:`, error.message);
+
+        // Check if we should retry
+        if (!this.shouldRetry(error) || attempt === maxRetries) {
+          break;
+        }
+
+        // Exponential backoff
+        const delay = this.retryDelay * Math.pow(2, attempt - 1);
+        await this.sleep(delay);
+      }
+    }
+
+    // All retries failed
+    console.error(`All ${maxRetries} attempts failed for order ${paymentData.orderId}`);
+    throw lastError;
+  }
+
+  shouldRetry(error) {
+    // Retry on network errors and rate limits
+    const retryableErrors = [
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      'rate limit',
+      'timeout'
+    ];
+
+    return retryableErrors.some(retryableError => 
+      error.message.toLowerCase().includes(retryableError.toLowerCase())
+    );
+  }
+
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async processPaymentSafely(paymentData) {
+    try {
+      // Validate input
+      this.validatePaymentData(paymentData);
+
+      // Create payment with retry logic
+      const payment = await this.createPaymentWithRetry(paymentData);
+
+      // Log success
+      console.log(`Payment created successfully: ${payment.orderId}`);
+
+      return {
+        success: true,
+        payment
+      };
+    } catch (error) {
+      // Log error for monitoring
+      console.error(`Payment processing failed:`, {
+        orderId: paymentData.orderId,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+
+      // Return error response
+      return {
+        success: false,
+        error: error.message,
+        orderId: paymentData.orderId
+      };
+    }
+  }
+
+  validatePaymentData(data) {
+    if (!data.orderId) {
+      throw new Error('Order ID is required');
+    }
+    if (!data.amount || data.amount <= 0) {
+      throw new Error('Valid amount is required');
+    }
+    if (!data.customerEmail) {
+      throw new Error('Customer email is required');
+    }
+  }
+}
+```
+
+## Testing Examples
+
+### Unit Tests with Mocks
+
+```javascript
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Unipay } from '@fiandev/unipay-sdk';
+
+describe('PaymentService', () => {
+  let paymentService;
+  let mockUnipay;
+
+  beforeEach(() => {
+    mockUnipay = {
+      createPayment: vi.fn(),
+      getPaymentStatus: vi.fn(),
+      cancelPayment: vi.fn()
+    };
+
+    paymentService = new PaymentService(mockUnipay);
+  });
+
+  it('should create payment successfully', async () => {
+    const order = {
+      id: 'ORDER-123',
+      total: 10000,
+      customer: {
+        email: 'test@example.com',
+        name: 'Test User'
+      }
+    };
+
+    const expectedPayment = {
+      orderId: 'ORDER-123',
+      amount: 10000,
+      status: 'pending',
+      metadata: {
+        redirect_url: 'https://example.com/pay'
+      }
+    };
+
+    mockUnipay.createPayment.mockResolvedValue(expectedPayment);
+
+    const result = await paymentService.createOrderPayment(order);
+
+    expect(mockUnipay.createPayment).toHaveBeenCalledWith({
+      orderId: 'ORDER-123',
+      amount: 10000,
+      customerEmail: 'test@example.com',
+      customerName: 'Test User',
+      description: 'Order #ORDER-123'
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.paymentUrl).toBe('https://example.com/pay');
+  });
+
+  it('should handle payment creation failure', async () => {
+    const order = {
+      id: 'ORDER-123',
+      total: 10000,
+      customer: { email: 'test@example.com', name: 'Test User' }
+    };
+
+    mockUnipay.createPayment.mockRejectedValue(new Error('API Error'));
+
+    await expect(paymentService.createOrderPayment(order))
+      .rejects.toThrow('Failed to create payment');
+  });
+});
+```
+
+### Integration Tests
+
+```javascript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { Unipay } from '@fiandev/unipay-sdk';
+
+describe('Payment Integration Tests', () => {
+  let unipay;
+
+  beforeAll(() => {
+    // Use test credentials from environment
+    unipay = new Unipay({
+      provider: 'midtrans',
+      config: {
+        client_id: process.env.MIDTRANS_CLIENT_ID,
+        secret_key: process.env.MIDTRANS_SECRET_KEY,
+        is_production: false
+      }
+    });
+  });
+
+  it('should create and check payment status', async () => {
+    const orderId = `TEST-${Date.now()}`;
+    
+    // Create payment
+    const payment = await unipay.createPayment({
+      orderId,
+      amount: 10000,
+      customerEmail: 'test@example.com',
+      customerName: 'Test User'
+    });
+
+    expect(payment.orderId).toBe(orderId);
+    expect(payment.amount).toBe(10000);
+    expect(payment.status).toBe('pending');
+
+    // Check status
+    const status = await unipay.getPaymentStatus(orderId);
+    expect(status.orderId).toBe(orderId);
+    expect(status.status).toBe('pending');
+  }, 10000);
+
+  it('should create virtual account', async () => {
+    const orderId = `VA-TEST-${Date.now()}`;
+    
+    const va = await unipay.createVirtualAccount({
+      orderId,
+      amount: 25000,
+      bankCode: 'bca',
+      customerEmail: 'test@example.com',
+      customerName: 'Test User'
+    });
+
+    expect(va.paymentId).toBe(orderId);
+    expect(va.amount).toBe(25000);
+    expect(va.metadata.va_numbers).toBeDefined();
+  }, 10000);
+});
+```
+
+These examples demonstrate common patterns and best practices for integrating UniPay SDK into various types of applications. Adapt them to your specific use case and requirements.

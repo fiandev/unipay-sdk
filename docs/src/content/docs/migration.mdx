@@ -1,0 +1,588 @@
+---
+title: Migration & Upgrades
+description: Guides for migrating to UniPay SDK and upgrading between versions.
+route: /migration
+---
+
+# Migration & Upgrades
+
+This guide helps you migrate from other payment SDKs to UniPay SDK and upgrade between different versions of UniPay SDK.
+
+## Migrating from Direct Midtrans SDK
+
+### Before (Direct Midtrans SDK)
+
+```javascript
+const { Snap, CoreApi } = require('midtrans-client');
+
+const snap = new Snap({
+  isProduction: false,
+  serverKey: 'your-server-key',
+  clientKey: 'your-client-key'
+});
+
+const core = new CoreApi({
+  isProduction: false,
+  serverKey: 'your-server-key',
+  clientKey: 'your-client-key'
+});
+
+// Create Snap transaction
+const transaction = await snap.createTransaction({
+  transaction_details: {
+    order_id: 'ORDER-123',
+    gross_amount: 10000
+  },
+  customer_details: {
+    email: 'customer@example.com',
+    name: 'John Doe'
+  }
+});
+
+// Create Virtual Account
+const va = await core.charge({
+  payment_type: 'bank_transfer',
+  transaction_details: {
+    order_id: 'VA-123',
+    gross_amount: 25000
+  },
+  bank_transfer: {
+    bank: 'bca'
+  }
+});
+```
+
+### After (UniPay SDK)
+
+```javascript
+const { Unipay } = require('@fiandev/unipay-sdk');
+
+const unipay = new Unipay({
+  provider: 'midtrans',
+  config: {
+    client_id: 'your-client-id',
+    secret_key: 'your-server-key',
+    public_key: 'your-client-key',
+    is_production: false
+  }
+});
+
+// Create payment (unified interface)
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-123',
+  amount: 10000,
+  customerEmail: 'customer@example.com',
+  customerName: 'John Doe'
+});
+
+// Create Virtual Account (unified interface)
+const va = await unipay.createVirtualAccount({
+  orderId: 'VA-123',
+  amount: 25000,
+  bankCode: 'bca',
+  customerEmail: 'customer@example.com',
+  customerName: 'John Doe'
+});
+```
+
+### Migration Benefits
+
+1. **Unified Interface** - Same code works for multiple providers
+2. **Standardized Responses** - Consistent response format
+3. **Better Error Handling** - Unified error handling across providers
+4. **Type Safety** - Full TypeScript support
+5. **Easier Testing** - Mockable interfaces
+
+### Migration Steps
+
+1. **Install UniPay SDK**
+   ```bash
+   npm install @fiandev/unipay-sdk
+   ```
+
+2. **Update Configuration**
+   ```javascript
+   // Old configuration
+   const snapConfig = {
+     isProduction: false,
+     serverKey: 'your-server-key',
+     clientKey: 'your-client-key'
+   };
+
+   // New configuration
+   const unipayConfig = {
+     provider: 'midtrans',
+     config: {
+       client_id: 'your-client-id', // New field
+       secret_key: 'your-server-key', // Same as serverKey
+       public_key: 'your-client-key', // Same as clientKey
+       is_production: false // Same as isProduction
+     }
+   };
+   ```
+
+3. **Update Method Calls**
+   ```javascript
+   // Old: Snap transaction
+   const transaction = await snap.createTransaction(snapData);
+
+   // New: Unified payment
+   const payment = await unipay.createPayment(paymentData);
+
+   // Old: Core API charge
+   const va = await core.charge(vaData);
+
+   // New: Unified virtual account
+   const va = await unipay.createVirtualAccount(vaData);
+   ```
+
+4. **Update Response Handling**
+   ```javascript
+   // Old response handling
+   console.log(transaction.token);
+   console.log(transaction.redirect_url);
+
+   // New response handling
+   console.log(payment.metadata.token);
+   console.log(payment.metadata.redirect_url);
+   ```
+
+## Migrating from Other Payment SDKs
+
+### From Xendit SDK
+
+```javascript
+// Before (Xendit SDK)
+const x = new Xendit({
+  secretKey: 'xnd_development_...'
+});
+
+const { Invoice } = x;
+const invoice = await Invoice.create({
+  external_id: 'ORDER-123',
+  amount: 10000,
+  payer_email: 'customer@example.com',
+  description: 'Test payment'
+});
+
+// After (UniPay SDK - when Xendit is supported)
+const unipay = new Unipay({
+  provider: 'xendit',
+  config: {
+    secret_key: 'xnd_development_...',
+    is_production: false
+  }
+});
+
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-123',
+  amount: 10000,
+  customerEmail: 'customer@example.com',
+  description: 'Test payment'
+});
+```
+
+### From DOKU SDK
+
+```javascript
+// Before (DOKU SDK)
+const doku = new DokuClient({
+  client_id: 'your-client-id',
+  secret_key: 'your-secret-key',
+  environment: 'sandbox'
+});
+
+const payment = await doku.generatePayment({
+  order: {
+    amount: 10000,
+    invoice_number: 'ORDER-123'
+  },
+  customer: {
+    email: 'customer@example.com',
+    name: 'John Doe'
+  }
+});
+
+// After (UniPay SDK - when DOKU is supported)
+const unipay = new Unipay({
+  provider: 'doku',
+  config: {
+    client_id: 'your-client-id',
+    secret_key: 'your-secret-key',
+    is_production: false
+  }
+});
+
+const payment = await unipay.createPayment({
+  orderId: 'ORDER-123',
+  amount: 10000,
+  customerEmail: 'customer@example.com',
+  customerName: 'John Doe'
+});
+```
+
+## Version Upgrades
+
+### Upgrading from v0.x to v1.x
+
+#### Breaking Changes
+
+1. **Configuration Structure**
+   ```javascript
+   // v0.x
+   const unipay = new Unipay({
+     provider: 'midtrans',
+     clientKey: 'your-client-key',
+     serverKey: 'your-server-key',
+     environment: 'sandbox'
+   });
+
+   // v1.x
+   const unipay = new Unipay({
+     provider: 'midtrans',
+     config: {
+       client_id: 'your-client-id',
+       secret_key: 'your-server-key',
+       public_key: 'your-client-key',
+       is_production: false
+     }
+   });
+   ```
+
+2. **Method Names**
+   ```javascript
+   // v0.x
+   const payment = await unipay.createTransaction(data);
+   const va = await unipay.createBankTransfer(data);
+
+   // v1.x
+   const payment = await unipay.createPayment(data);
+   const va = await unipay.createVirtualAccount(data);
+   ```
+
+3. **Response Format**
+   ```javascript
+   // v0.x response
+   {
+     token: 'snap-token',
+     redirect_url: 'https://...',
+     order_id: 'ORDER-123'
+   }
+
+   // v1.x response
+   {
+     provider: 'midtrans',
+     orderId: 'ORDER-123',
+     amount: 10000,
+     status: 'pending',
+     metadata: {
+       token: 'snap-token',
+       redirect_url: 'https://...'
+     }
+   }
+   ```
+
+#### Migration Script
+
+```javascript
+// Migration helper for v0.x to v1.x
+class MigrationHelper {
+  static migrateConfig(oldConfig) {
+    return {
+      provider: oldConfig.provider,
+      config: {
+        client_id: oldConfig.clientId || oldConfig.merchantId,
+        secret_key: oldConfig.serverKey || oldConfig.secretKey,
+        public_key: oldConfig.clientKey,
+        is_production: oldConfig.environment === 'production'
+      }
+    };
+  }
+
+  static migratePaymentData(oldData) {
+    return {
+      orderId: oldData.order_id || oldData.invoice_number,
+      amount: oldData.amount || oldData.gross_amount,
+      customerEmail: oldData.customer?.email || oldData.payer_email,
+      customerName: oldData.customer?.name || oldData.payer_name,
+      description: oldData.description,
+      currency: oldData.currency
+    };
+  }
+
+  static migrateResponse(oldResponse) {
+    return {
+      provider: 'midtrans',
+      orderId: oldResponse.order_id,
+      amount: oldResponse.gross_amount || oldResponse.amount,
+      status: 'pending',
+      metadata: {
+        token: oldResponse.token,
+        redirect_url: oldResponse.redirect_url,
+        ...oldResponse
+      }
+    };
+  }
+}
+```
+
+### Upgrading from v1.0 to v1.1+
+
+#### New Features
+
+1. **Enhanced Error Handling**
+   ```javascript
+   // v1.0
+   try {
+     const payment = await unipay.createPayment(data);
+   } catch (error) {
+     console.error(error.message);
+   }
+
+   // v1.1+
+   try {
+     const payment = await unipay.createPayment(data);
+   } catch (error) {
+     const errorInfo = ErrorHandler.handle(error);
+     console.error(errorInfo.type, errorInfo.message);
+   }
+   ```
+
+2. **Provider Factory**
+   ```javascript
+   // v1.1+ - New factory pattern
+   import { ProviderFactory } from '@fiandev/unipay-sdk';
+
+   const provider = ProviderFactory.create('midtrans', config);
+   const payment = await provider.createPayment(data);
+   ```
+
+3. **Custom Provider Registration**
+   ```javascript
+   // v1.1+ - Register custom providers
+   ProviderFactory.register('custom', CustomProvider, defaultConfig);
+   ```
+
+## Migration Checklist
+
+### Pre-Migration Checklist
+
+- [ ] Backup current implementation
+- [ ] Document current payment flow
+- [ ] Identify all payment methods used
+- [ ] Note custom integrations and webhooks
+- [ ] Test environment setup
+- [ ] Get new API credentials if needed
+
+### Migration Steps
+
+1. **Install New SDK**
+   ```bash
+   npm install @fiandev/unipay-sdk@latest
+   ```
+
+2. **Update Configuration**
+   - Update configuration structure
+   - Update environment variables
+   - Validate new configuration
+
+3. **Update Method Calls**
+   - Replace old method names
+   - Update parameter names
+   - Handle new response format
+
+4. **Update Tests**
+   - Update unit tests
+   - Update integration tests
+   - Test all payment flows
+
+5. **Update Webhooks**
+   - Update webhook handlers
+   - Verify signature validation
+   - Test webhook processing
+
+6. **Deploy to Staging**
+   - Deploy to staging environment
+   - Run full test suite
+   - Test with real payment provider
+
+7. **Production Deployment**
+   - Schedule maintenance window
+   - Deploy to production
+   - Monitor for issues
+
+### Post-Migration Checklist
+
+- [ ] All payment methods working
+- [ ] Webhooks processing correctly
+- [ ] Error handling working
+- [ ] Monitoring and alerts configured
+- [ ] Documentation updated
+- [ ] Team trained on new implementation
+
+## Common Migration Issues
+
+### Issue 1: Configuration Errors
+
+**Problem:** Missing or incorrect configuration fields
+
+**Solution:**
+```javascript
+// Ensure all required fields are present
+const requiredFields = ['client_id', 'secret_key'];
+for (const field of requiredFields) {
+  if (!config[field]) {
+    throw new Error(`Missing required field: ${field}`);
+  }
+}
+```
+
+### Issue 2: Response Format Changes
+
+**Problem:** Code expecting old response format
+
+**Solution:**
+```javascript
+// Update response handling
+function handlePaymentResponse(response) {
+  // Old way
+  // const token = response.token;
+  
+  // New way
+  const token = response.metadata.token;
+  const orderId = response.orderId;
+  const status = response.status;
+  
+  return { token, orderId, status };
+}
+```
+
+### Issue 3: Method Name Changes
+
+**Problem:** Code calling deprecated methods
+
+**Solution:**
+```javascript
+// Create compatibility layer
+class CompatibilityLayer {
+  constructor(unipay) {
+    this.unipay = unipay;
+  }
+
+  // Deprecated method wrapper
+  async createTransaction(data) {
+    console.warn('createTransaction is deprecated, use createPayment instead');
+    return this.unipay.createPayment(data);
+  }
+
+  async createBankTransfer(data) {
+    console.warn('createBankTransfer is deprecated, use createVirtualAccount instead');
+    return this.unipay.createVirtualAccount(data);
+  }
+}
+```
+
+## Rollback Plan
+
+### Quick Rollback
+
+If migration fails, quickly rollback:
+
+1. **Revert Code**
+   ```bash
+   git revert <migration-commit>
+   npm install
+   ```
+
+2. **Restore Configuration**
+   ```bash
+   # Restore old environment variables
+   cp .env.backup .env
+   ```
+
+3. **Restart Services**
+   ```bash
+   npm run restart
+   ```
+
+### Data Migration
+
+If payment data format changed:
+
+```javascript
+// Migrate existing payment records
+async function migratePaymentRecords() {
+  const payments = await Payment.find({});
+  
+  for (const payment of payments) {
+    const migratedData = {
+      ...payment.toObject(),
+      // Add new fields
+      provider: 'midtrans',
+      status: mapOldStatus(payment.status),
+      metadata: {
+        ...payment.rawResponse,
+        // Preserve old data
+        legacy_data: payment.rawResponse
+      }
+    };
+    
+    await Payment.findByIdAndUpdate(payment._id, migratedData);
+  }
+}
+```
+
+## Testing Migration
+
+### Unit Tests
+
+```javascript
+describe('Migration Tests', () => {
+  test('old config migrates correctly', () => {
+    const oldConfig = {
+      provider: 'midtrans',
+      serverKey: 'old-key',
+      clientKey: 'old-client',
+      environment: 'sandbox'
+    };
+
+    const newConfig = MigrationHelper.migrateConfig(oldConfig);
+    
+    expect(newConfig.config.secret_key).toBe('old-key');
+    expect(newConfig.config.public_key).toBe('old-client');
+    expect(newConfig.config.is_production).toBe(false);
+  });
+
+  test('payment data migrates correctly', () => {
+    const oldData = {
+      order_id: 'ORDER-123',
+      gross_amount: 10000,
+      payer_email: 'test@example.com'
+    };
+
+    const newData = MigrationHelper.migratePaymentData(oldData);
+    
+    expect(newData.orderId).toBe('ORDER-123');
+    expect(newData.amount).toBe(10000);
+    expect(newData.customerEmail).toBe('test@example.com');
+  });
+});
+```
+
+### Integration Tests
+
+```javascript
+describe('Migration Integration Tests', () => {
+  test('payment flow works with new SDK', async () => {
+    const unipay = new Unipay(migratedConfig);
+    
+    const payment = await unipay.createPayment(testPaymentData);
+    
+    expect(payment.orderId).toBe(testPaymentData.orderId);
+    expect(payment.amount).toBe(testPaymentData.amount);
+    expect(payment.status).toBe('pending');
+  });
+});
+```
+
+By following this migration guide, you can smoothly transition to UniPay SDK and take advantage of its unified interface and enhanced features.

@@ -1,0 +1,248 @@
+---
+title: Getting Started
+description: Learn how to set up and use UniPay SDK in your Node.js application.
+route: /getting-started
+---
+
+# Getting Started
+
+This guide will help you get started with UniPay SDK in your Node.js application.
+
+## Prerequisites
+
+- Node.js 14.0 or higher
+- npm or yarn package manager
+- Payment provider account (currently Midtrans is supported)
+
+## Installation
+
+Install UniPay SDK using npm or yarn:
+
+```bash
+# Using npm
+npm install @fiandev/unipay-sdk
+
+# Using yarn
+yarn add @fiandev/unipay-sdk
+```
+
+## Basic Setup
+
+### 1. Import the SDK
+
+```javascript
+// ES Modules
+import { Unipay, MidtransProvider } from '@fiandev/unipay-sdk';
+
+// CommonJS
+const { Unipay, MidtransProvider } = require('@fiandev/unipay-sdk');
+```
+
+### 2. Configure Your Provider
+
+First, you need to get your API credentials from your payment provider. For Midtrans:
+
+1. Sign up at [Midtrans Dashboard](https://dashboard.midtrans.com/)
+2. Get your Server Key, Client Key, and environment settings
+
+### 3. Initialize UniPay
+
+#### Method 1: Using Provider Name (Recommended)
+
+```javascript
+const unipay = new Unipay({
+  provider: 'midtrans',
+  config: {
+    client_id: 'your-client-id',
+    secret_key: 'your-secret-key',
+    public_key: 'your-public-key', // optional
+    is_production: false // set to true for production
+  }
+});
+```
+
+#### Method 2: Using Provider Instance
+
+```javascript
+import { ProviderFactory } from '@fiandev/unipay-sdk';
+
+const midtransProvider = ProviderFactory.create('midtrans', {
+  client_id: 'your-client-id',
+  secret_key: 'your-secret-key',
+  public_key: 'your-public-key',
+  is_production: false
+});
+
+const unipay = new Unipay({});
+unipay.setProvider(midtransProvider);
+```
+
+## Your First Payment
+
+### Create a Simple Payment
+
+```javascript
+async function createPayment() {
+  try {
+    const payment = await unipay.createPayment({
+      orderId: 'ORDER-' + Date.now(),
+      amount: 10000,
+      customerEmail: 'customer@example.com',
+      customerName: 'John Doe',
+      description: 'Test payment'
+    });
+
+    console.log('Payment created:', payment);
+    return payment;
+  } catch (error) {
+    console.error('Payment failed:', error.message);
+  }
+}
+
+createPayment();
+```
+
+### Create a Virtual Account
+
+```javascript
+async function createVirtualAccount() {
+  try {
+    const va = await unipay.createVirtualAccount({
+      orderId: 'VA-' + Date.now(),
+      amount: 50000,
+      bankCode: 'bca', // Bank code for virtual account
+      customerEmail: 'customer@example.com',
+      customerName: 'Jane Doe'
+    });
+
+    console.log('Virtual Account created:', va);
+    return va;
+  } catch (error) {
+    console.error('VA creation failed:', error.message);
+  }
+}
+
+createVirtualAccount();
+```
+
+## Environment Configuration
+
+For better security and configuration management, use environment variables:
+
+### 1. Create a `.env` file
+
+```bash
+MIDTRANS_CLIENT_ID=your-client-id
+MIDTRANS_SECRET_KEY=your-secret-key
+MIDTRANS_PUBLIC_KEY=your-public-key
+MIDTRANS_IS_PRODUCTION=false
+```
+
+### 2. Load environment variables
+
+```javascript
+import dotenv from 'dotenv';
+dotenv.config();
+
+const unipay = new Unipay({
+  provider: 'midtrans',
+  config: {
+    client_id: process.env.MIDTRANS_CLIENT_ID,
+    secret_key: process.env.MIDTRANS_SECRET_KEY,
+    public_key: process.env.MIDTRANS_PUBLIC_KEY,
+    is_production: process.env.MIDTRANS_IS_PRODUCTION === 'true'
+  }
+});
+```
+
+## Payment Status and Management
+
+### Check Payment Status
+
+```javascript
+async function checkPaymentStatus(orderId) {
+  try {
+    const status = await unipay.getPaymentStatus(orderId);
+    console.log('Payment status:', status);
+    return status;
+  } catch (error) {
+    console.error('Status check failed:', error.message);
+  }
+}
+```
+
+### Cancel Payment
+
+```javascript
+async function cancelPayment(orderId) {
+  try {
+    const result = await unipay.cancelPayment(orderId);
+    console.log('Payment cancelled:', result);
+    return result;
+  } catch (error) {
+    console.error('Cancellation failed:', error.message);
+  }
+}
+```
+
+## Response Format
+
+All payment responses follow a standardized format:
+
+```javascript
+{
+  provider: "midtrans",
+  orderId: "ORDER-123",
+  amount: 10000,
+  currency: "IDR",
+  status: "pending", // pending | paid | failed | expired | refunded | cancelled
+  method: "other",
+  description: "Test payment",
+  customerEmail: "customer@example.com",
+  customerName: "John Doe",
+  createdAt: "2023-12-01T10:00:00.000Z",
+  metadata: {
+    token: "snap-token",
+    redirect_url: "https://app.midtrans.com/snap/v2/vtweb/..."
+  }
+}
+```
+
+## Next Steps
+
+- [API Reference](./api-reference) - Complete API documentation
+- [Providers](./providers) - Provider-specific features
+- [Examples](./examples) - Real-world usage examples
+- [Configuration](./configuration) - Advanced configuration options
+- [Error Handling](./error-handling) - Error handling best practices
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Missing credentials**: Ensure all required API keys are provided
+2. **Environment mismatch**: Check `is_production` setting
+3. **Invalid order ID**: Use unique order IDs for each transaction
+4. **Network errors**: Implement proper retry logic
+
+### Debug Mode
+
+Enable debug logging to troubleshoot issues:
+
+```javascript
+const unipay = new Unipay({
+  provider: 'midtrans',
+  config: {
+    client_id: 'your-client-id',
+    secret_key: 'your-secret-key',
+    is_production: false,
+    debug: true // Enable debug logging
+  }
+});
+```
+
+### Getting Help
+
+- Check the [GitHub Issues](https://github.com/fiandev/unipay-sdk/issues)
+- Review the [API Reference](./api-reference)
+- See [Examples](./examples) for common use cases
