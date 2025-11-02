@@ -1,0 +1,19 @@
+{
+  "name": "unipay-sdk",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/dotenv": "^8.2.3",
+    "vitest": "^4.0.6"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@types/midtrans-client": "^1.4.0",
+    "doku-nodejs-library": "^1.0.52",
+    "dotenv": "^17.2.3",
+    "midtrans-client": "^1.4.3"
+  }
+}
