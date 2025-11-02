@@ -2,6 +2,9 @@
   "name": "unipay-sdk",
   "module": "index.ts",
   "type": "module",
+  "scripts": {
+    "test": "vitest"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/dotenv": "^8.2.3",

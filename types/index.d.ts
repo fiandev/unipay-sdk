@@ -1,15 +1,11 @@
-import type {
-  Snap as MidtransSnap,
-  SnapTransactionParameters,
-} from "midtrans-client";
-import type { Snap as DokuSnap } from "doku-nodejs-library";
-import type { BasePayment, Transaction } from "../types/payment";
+import type { BasePayment, Transaction } from "./payment";
 
 export interface ConfigProviderParams {
   client_id: string;
   secret_key: string;
   public_key?: string;
   is_production: boolean;
+  [key: string]: any; // Allow provider-specific config
 }
 
 export interface BaseProviderInterface {
@@ -27,23 +23,56 @@ export interface BaseProviderInterface {
 }
 
 /**
- * Standardized provider interface across Midtrans, DOKU, Xendit, etc.
+ * Generic payment data interface that can be extended by providers
+ */
+export interface PaymentData {
+  orderId: string;
+  amount: number;
+  currency?: string;
+  description?: string;
+  customerEmail?: string;
+  customerName?: string;
+  [key: string]: any; // Allow provider-specific fields
+}
+
+/**
+ * Generic virtual account data interface
+ */
+export interface VirtualAccountData extends PaymentData {
+  bankCode?: string;
+  vaNumber?: string;
+  expiresAt?: string;
+  [key: string]: any; // Allow provider-specific fields
+}
+
+/**
+ * Standardized provider interface across all payment providers
  */
 export interface ProviderInterface {
   /**
-   * Initialize snap instance (Midtrans/DOKU) for frontend token or checkout URL
+   * Get provider-specific client instance
    */
-  snap(): Promise<MidtransSnap | DokuSnap>;
+  getClient(): Promise<any>;
 
   /**
    * Create a unified payment (invoice, checkout, or QR)
    */
-  createPayment(data: any): Promise<BasePayment>;
+  createPayment(data: PaymentData): Promise<BasePayment>;
 
   /**
    * Create a virtual account or equivalent VA-based payment method
    */
-  createVirtualAccount(data: BasePayment): Promise<Transaction>;
+  createVirtualAccount(data: VirtualAccountData): Promise<Transaction>;
+
+  /**
+   * Get payment status by provider reference
+   */
+  getPaymentStatus?(referenceId: string): Promise<BasePayment>;
+
+  /**
+   * Cancel a payment
+   */
+  cancelPayment?(referenceId: string): Promise<BasePayment>;
 }
 
 /**
@@ -59,4 +88,9 @@ export interface UnipayInterface extends ProviderInterface {
    * Inject a provider instance (Midtrans, DOKU, Xendit)
    */
   setProvider(provider: ProviderInterface): void;
+
+  /**
+   * Get current provider instance
+   */
+  getProvider(): ProviderInterface | null;
 }
