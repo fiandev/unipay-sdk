@@ -47,6 +47,9 @@
     "url": "https://github.com/fiandev/unipay-sdk/issues"
   },
   "homepage": "https://github.com/fiandev/unipay-sdk#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/dotenv": "^8.2.3",
