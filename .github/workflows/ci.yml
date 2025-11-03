@@ -64,7 +64,9 @@ jobs:
 
       - name: Get package version
         id: pkg
-        run: echo "version=$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          printf "version=%s\n" "$VERSION" >> $GITHUB_OUTPUT
 
       - name: Check if version exists on GPR
         id: check
