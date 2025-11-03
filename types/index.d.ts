@@ -1,7 +1,7 @@
 import type { BasePayment, Transaction } from "./payment";
 
 export interface ConfigProviderParams {
-  client_id: string;
+  client_id?: string;
   secret_key: string;
   public_key?: string;
   is_production: boolean;

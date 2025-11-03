@@ -1,0 +1,245 @@
+import BaseProvider from "../lib/BaseProvider";
+import type {
+  ConfigProviderParams,
+  ProviderInterface,
+  PaymentData,
+  VirtualAccountData,
+} from "../types";
+import { Xendit, Invoice as InvoiceClient } from "xendit-node";
+
+// Extend the CoreApi interface to include transaction methods
+interface ExtendedCoreApi {
+  transaction: {
+    status(transactionId: string): Promise<any>;
+    cancel(transactionId: string): Promise<any>;
+    approve(transactionId: string): Promise<any>;
+    deny(transactionId: string): Promise<any>;
+    expire(transactionId: string): Promise<any>;
+    refund(transactionId: string, parameter?: any): Promise<any>;
+  };
+}
+import type { BasePayment, Transaction } from "../types/payment";
+import type { CreateInvoiceRequest } from "xendit-node/invoice/models";
+import { PaymentRequestCurrency } from "xendit-node/payment_request/models";
+import {
+  PaymentMethodReusability,
+  PaymentMethodType,
+  VirtualAccountChannelCode,
+} from "xendit-node/payment_method/models";
+
+export default class XenditProvider
+  extends BaseProvider
+  implements ProviderInterface
+{
+  client!: Xendit;
+
+  constructor(config: ConfigProviderParams) {
+    super(config);
+    this.validateConfig(["secret_key", "is_production"]);
+  }
+
+  protected override async initializeClient(): Promise<{
+    client: Xendit;
+  }> {
+    const client = new Xendit({
+      secretKey: this.config.secret_key,
+      xenditURL: this.config.is_production
+        ? "https://api.xendit.co"
+        : "https://sandbox.xendit.co",
+    });
+
+    this.client = client;
+
+    return { client };
+  }
+
+  override async getClient(): Promise<Xendit> {
+    if (!this.client) {
+      await this.initializeClient();
+    }
+
+    return this.client!;
+  }
+
+  /**
+   * Create Xendit payment via Snap API (checkout/invoice)
+   */
+  async createPayment(data: PaymentData): Promise<BasePayment> {
+    try {
+      const client = await this.getClient();
+
+      const snapData: CreateInvoiceRequest = {
+        amount: data.amount,
+        invoiceDuration: data.expired || 172800, // Default expiration time in seconds (2 days)
+        externalId: data.orderId,
+        description: data.description || "Xendit Snap Payment",
+        currency: data.currency || "IDR",
+        reminderTime: 1,
+      };
+
+      if (data.customerEmail || data.customerName) {
+        snapData.customer = {
+          email: data.customerEmail,
+          givenNames: data.customerName,
+        };
+      }
+
+      const transaction = await client.Invoice.createInvoice({
+        data: snapData,
+      });
+
+      return this.standardizePaymentResponse(
+        "Xendit",
+        {
+          orderId: data.orderId,
+          amount: data.amount,
+          currency: data.currency,
+          status: transaction.status,
+          method: transaction.paymentMethod || "unknown",
+          description: data.description || "Xendit Snap Payment",
+          customerEmail: data.customerEmail,
+          customerName: data.customerName,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          token: transaction.id,
+          redirect_url: transaction.invoiceUrl,
+        },
+      );
+    } catch (error) {
+      this.handleError(error, "createPayment");
+    }
+  }
+
+  /**
+   * Create Xendit Virtual Account
+   */
+  async createVirtualAccount(data: VirtualAccountData): Promise<Transaction> {
+    try {
+      const client = await this.getClient();
+
+      const vaData: any = {
+        amount: data.amount,
+        currency:
+          PaymentRequestCurrency[
+            (data?.currency || "IDR") as keyof typeof PaymentRequestCurrency
+          ],
+        referenceId: data.orderId,
+        customer: {
+          name: data.customerName || "",
+          email: data.customerEmail || "",
+        },
+      };
+      if (data?.bankCode && data.bankCode in VirtualAccountChannelCode) {
+        vaData.paymentMethod = {
+          reusability: data.isReusable
+            ? PaymentMethodReusability.MultipleUse
+            : PaymentMethodReusability.OneTimeUse,
+          type: "VIRTUAL_ACCOUNT",
+          virtualAccount: {
+            channelProperties: {
+              customerName:
+                data.customerName || `VA-${data.orderId}-${data.customerName}`,
+              expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+            },
+            channelCode:
+              VirtualAccountChannelCode[
+                data.bankCode as keyof typeof VirtualAccountChannelCode
+              ],
+          },
+          referenceId: data.orderId,
+        };
+      }
+
+      const payment = await client.PaymentRequest.createPaymentRequest(
+        vaData as any,
+      );
+
+      return this.standardizeTransactionResponse(
+        "xendit",
+        {
+          id: payment.id,
+          paymentId: payment.id,
+          status: payment.status,
+          amount: payment.amount,
+          currency: payment.currency,
+          createdAt: new Date().toISOString(),
+        },
+        "charge",
+        {
+          va_numbers:
+            payment.paymentMethod.type === PaymentMethodType.VirtualAccount
+              ? [
+                  payment.paymentMethod.virtualAccount?.channelProperties
+                    ?.virtualAccountNumber || "",
+                ]
+              : [],
+          payment_type: payment.paymentMethod.type,
+        },
+      );
+    } catch (error) {
+      this.handleError(error, "createVirtualAccount");
+    }
+  }
+
+  /**
+   * Get payment status from Xendit
+   */
+  async getPaymentStatus(referenceId: string): Promise<BasePayment> {
+    try {
+      const client = await this.getClient();
+      const payment = await client.PaymentRequest.getPaymentRequestByID({
+        paymentRequestId: referenceId,
+      });
+
+      return this.standardizePaymentResponse(
+        "xendit",
+        {
+          orderId: payment.id,
+          amount: payment.amount,
+          currency: payment.currency,
+          status: payment.status,
+          method: payment.paymentMethod.type,
+          description: payment.description,
+          customerEmail: (payment as any)?.customer?.email || "",
+          customerName: (payment as any)?.customer?.name || "",
+          createdAt: payment.created,
+          updatedAt: payment.updated,
+          expiresAt: "",
+        },
+        {
+          fraud_status: payment.status,
+          approval_code: "",
+          payment_type: payment.paymentMethod.type,
+          transaction_time: payment.created,
+          gross_amount: payment.amount,
+          va_numbers:
+            payment.paymentMethod.type === PaymentMethodType.VirtualAccount
+              ? [
+                  payment.paymentMethod.virtualAccount?.channelProperties
+                    ?.virtualAccountNumber || "",
+                ]
+              : [],
+          permata_va_number: "",
+          bill_key: "",
+          biller_code: "",
+        },
+      );
+    } catch (error) {
+      this.handleError(error, "getPaymentStatus");
+    }
+  }
+
+  /**
+   * Cancel payment in Xendit
+   */
+  async cancelPayment(referenceId: string): Promise<BasePayment> {
+    try {
+      throw new Error(
+        `sorry, xendit not support payment cancellation, please recreate new payment for this order`,
+      );
+    } catch (error) {
+      this.handleError(error, "cancelPayment");
+    }
+  }
+}

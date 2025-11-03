@@ -145,7 +145,9 @@ export default class BaseProvider implements BaseProviderInterface {
    * Validate required configuration
    */
   protected validateConfig(requiredFields: string[]): void {
-    const missing = requiredFields.filter(field => !this.config[field]);
+    const missing = requiredFields.filter(field => 
+      this.config[field] === undefined || this.config[field] === null
+    );
     if (missing.length > 0) {
       throw new Error(`Missing required config fields: ${missing.join(", ")}`);
     }

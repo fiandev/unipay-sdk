@@ -33,7 +33,7 @@ describe.skipIf(!hasIntegrationCredentials)(
     beforeAll(() => {
       const clientId = process.env.MIDTRANS_PUBLIC_KEY!;
       const secretKey = process.env.MIDTRANS_SECRET_KEY!;
-      const isProduction = false;
+      const isProduction = process.env.MIDTRANS_IS_PRODUCTION === "true";
 
       testConfig = {
         client_id: clientId,
