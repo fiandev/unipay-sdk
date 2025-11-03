@@ -57,6 +57,7 @@
     "@types/midtrans-client": "^1.4.0",
     "doku-nodejs-library": "^1.0.52",
     "dotenv": "^17.2.3",
-    "midtrans-client": "^1.4.3"
+    "midtrans-client": "^1.4.3",
+    "xendit-node": "^7.0.0"
   }
 }

@@ -42,6 +42,8 @@ export interface VirtualAccountData extends PaymentData {
   bankCode?: string;
   vaNumber?: string;
   expiresAt?: string;
+  isReusable: boolean;
+  isFixedAmount: boolean;
   [key: string]: any; // Allow provider-specific fields
 }
 
