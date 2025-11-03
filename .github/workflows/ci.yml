@@ -15,6 +15,7 @@ jobs:
     strategy:
       matrix:
         node-version: [18.x, 20.x]
+      fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
@@ -28,8 +29,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Fix ESM issue for Node 18 when running Vitest
       - name: Run tests
-        run: npm run test:ci
+        run: |
+          if [[ "${{ matrix.node-version }}" == "18.x" ]]; then
+            node --experimental-vm-modules node_modules/vitest/vitest.mjs run
+          else
+            npm run test:ci
+          fi
 
       - name: Build project
         run: npm run build
@@ -59,8 +66,8 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/dist
+          github_token: ${{ secrets.GITHUB_TOKEN }} # otomatis tersedia
+          publish_dir: ./docs/dist # sesuaikan kalau hasil build berbeda
 
   publish:
     needs: [test, docs]
