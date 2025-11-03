@@ -70,11 +70,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js
+      - name: Use Node.js for GPR
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          registry-url: "https://registry.npmjs.org"
+          registry-url: "https://npm.pkg.github.com"
           cache: "npm"
 
       - name: Install dependencies
@@ -83,7 +83,7 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Publish to npm
+      - name: Publish to GitHub Packages Registry (GPR)
         run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
